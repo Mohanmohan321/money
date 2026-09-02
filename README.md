@@ -108,7 +108,7 @@ Configure these production environment variables in Vercel before deploying:
 - `APP_PASSWORD`
 - `SESSION_SECRET`
 - `APP_TIMEZONE`
-- `APP_ORIGIN`, set to the exact production origin such as `https://money.vercel.app`
+- `APP_ORIGIN`, set to the exact production origin. The current deployment uses `https://money-three-rose.vercel.app`.
 
 Then apply migrations once and deploy:
 
