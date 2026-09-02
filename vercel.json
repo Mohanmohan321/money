@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "express",
+  "buildCommand": "npm run build:client",
+  "rewrites": [
+    {
+      "source": "/:path((?!api/|healthz|assets/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+run = "npm run dev"
+entrypoint = "server/index.ts"
+
+[deployment]
+build = "npm run build"
+run = "npm start"

@@ -1,0 +1,188 @@
+import { z } from 'zod';
+
+const plainMoneyPattern = /^\d+(?:\.\d{1,2})?$/;
+
+export const moneySchema = z
+  .string({ error: 'Amount must be a decimal string' })
+  .trim()
+  .refine((value) => plainMoneyPattern.test(value), {
+    message: 'Amount must be a positive number with at most 2 decimal places',
+  })
+  .transform((value) => {
+    const [integerPart, fractionalPart = ''] = value.split('.');
+    const normalizedInteger = integerPart.replace(/^0+(?=\d)/, '');
+    return `${normalizedInteger}.${fractionalPart.padEnd(2, '0')}`;
+  })
+  .refine((value) => value !== '0.00', {
+    message: 'Amount must be greater than zero',
+  })
+  .refine((value) => value.split('.')[0].length <= 18, {
+    message: 'Amount is too large',
+  });
+
+const descriptionSchema = z
+  .string({ error: 'Description is required' })
+  .trim()
+  .min(1, 'Description is required')
+  .max(200, 'Description must be 200 characters or fewer');
+
+const personNameSchema = z
+  .string({ error: 'Person name is required' })
+  .trim()
+  .min(1, 'Person name is required')
+  .max(100, 'Person name must be 100 characters or fewer');
+
+export const loginSchema = z.object({
+  password: z
+    .string({ error: 'Password is required' })
+    .min(1, 'Password is required')
+    .max(1024, 'Password is too long'),
+});
+
+export const createTransactionSchema = z.object({
+  description: descriptionSchema,
+  amount: moneySchema,
+});
+
+export const createPersonRecordSchema = z.object({
+  personName: personNameSchema,
+  amount: moneySchema,
+});
+
+export const recordTypeSchema = z.enum(['transaction', 'lent', 'borrowed']);
+
+const localDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must use YYYY-MM-DD');
+
+export const dateFilterSchema = z
+  .object({
+    from: localDateSchema.optional(),
+    to: localDateSchema.optional(),
+  })
+  .refine(({ from, to }) => !from || !to || from <= to, {
+    message: '`from` must be on or before `to`',
+  });
+
+export const historyQuerySchema = dateFilterSchema.and(
+  z.object({
+    type: recordTypeSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    offset: z.coerce.number().int().min(0).max(100_000).default(0),
+  }),
+);
+
+export const analyticsQuerySchema = dateFilterSchema.and(
+  z.object({
+    period: z.enum(['day', 'week', 'month', 'year']).default('month'),
+  }),
+);
+
+export type RecordType = z.infer<typeof recordTypeSchema>;
+export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
+export type CreatePersonRecordInput = z.infer<typeof createPersonRecordSchema>;
+export type HistoryQuery = z.infer<typeof historyQuerySchema>;
+export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
+
+export interface TransactionRecord {
+  id: string;
+  description: string;
+  amount: string;
+  createdAt: string;
+}
+
+export interface PersonRecord {
+  id: string;
+  personName: string;
+  amount: string;
+  createdAt: string;
+}
+
+export type HistoryItem =
+  | (TransactionRecord & { type: 'transaction' })
+  | (PersonRecord & { type: 'lent' | 'borrowed' });
+
+export interface MovementPoint {
+  date: string;
+  transactionAmount: string;
+  lentAmount: string;
+  borrowedAmount: string;
+}
+
+export interface CategoryStatistics {
+  totalAmount: string;
+  count: number;
+  averageAmount: string;
+  largestAmount: string;
+  smallestAmount?: string;
+}
+
+export interface PersonSummary {
+  personName: string;
+  totalAmount: string;
+  count: number;
+}
+
+export interface TodayDashboard {
+  totalTransactions: string;
+  totalLent: string;
+  totalBorrowed: string;
+  transactionCount: number;
+  lendingCount: number;
+  borrowingCount: number;
+}
+
+export interface PeriodDashboard {
+  totalTransactions: string;
+  totalLent: string;
+  totalBorrowed: string;
+  recordCount: number;
+  daily: MovementPoint[];
+}
+
+export interface DashboardData {
+  timezone: string;
+  today: TodayDashboard;
+  week: PeriodDashboard;
+  month: PeriodDashboard;
+}
+
+export interface LendingPersonSummary {
+  personName: string;
+  totalAmount: string;
+  numberOfLoans: number;
+}
+
+export interface BorrowingPersonSummary {
+  personName: string;
+  totalAmount: string;
+  numberOfBorrowings: number;
+}
+
+export interface AnalyticsData {
+  period: 'day' | 'week' | 'month' | 'year';
+  timezone: string;
+  from: string;
+  to: string;
+  movement: MovementPoint[];
+  transactions: CategoryStatistics;
+  lending: Omit<CategoryStatistics, 'smallestAmount'>;
+  borrowing: Omit<CategoryStatistics, 'smallestAmount'>;
+  lendingByPerson: LendingPersonSummary[];
+  borrowingByPerson: BorrowingPersonSummary[];
+}
+
+export interface ApiSuccess<T> {
+  success: true;
+  data: T;
+}
+
+export interface ApiFailure {
+  success: false;
+  error: {
+    message: string;
+    code: string;
+  };
+}
+
+export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
