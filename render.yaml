@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ledgerly-money-api
+    runtime: node
+    repo: https://github.com/Mohanmohan321/money
+    branch: main
+    plan: free
+    region: singapore
+    buildCommand: npm ci --include=dev && npm run build:server
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: APP_TIMEZONE
+        value: Asia/Kolkata
+      - key: APP_ORIGIN
+        value: https://money-three-rose.vercel.app

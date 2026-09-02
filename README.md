@@ -98,26 +98,17 @@ Import the repository, then add these Secrets in Replit:
 
 Run `npm run db:migrate` once in the Shell. The included `.replit` uses `npm run dev` in the workspace and `npm run build` / `npm start` for deployment.
 
-## Vercel
+## Render backend and Vercel frontend
 
-The root `index.ts` exports the Express application as one Vercel Function. During a Vercel build, Vite writes the React client to `public/` so Vercel can serve it from the CDN; API and health routes continue to run through Express. `vercel.json` supplies the SPA fallback without intercepting `/api`, `/healthz`, or compiled assets.
+Production is split without exposing Neon to the browser:
 
-Configure these production environment variables in Vercel before deploying:
+- Render runs the Express API at `https://ledgerly-money-api.onrender.com`.
+- Vercel serves the React client at `https://money-three-rose.vercel.app`.
+- Vercel forwards `/api/*` and `/healthz` to Render, keeping browser requests and the HTTP-only session cookie on the frontend origin.
 
-- `DATABASE_URL`
-- `APP_PASSWORD`
-- `SESSION_SECRET`
-- `APP_TIMEZONE`
-- `APP_ORIGIN`, set to the exact production origin. The current deployment uses `https://money-three-rose.vercel.app`.
+The committed `render.yaml` defines the free Singapore-region Node web service, build/start commands, health check, and secret variable names. Configure `DATABASE_URL`, `APP_PASSWORD`, and `SESSION_SECRET` as Render secrets; never add their values to the blueprint.
 
-Then apply migrations once and deploy:
-
-```powershell
-npm.cmd run db:migrate
-vercel.cmd --prod
-```
-
-TypeScript is intentionally pinned to `6.0.3` because the current Vercel Express builder is incompatible with the changed compiler API in TypeScript 7.
+The committed `vercel.json` builds only the Vite client and contains the Render proxy rewrites plus the SPA fallback. No database or authentication secret is required in Vercel.
 
 ## API contract
 

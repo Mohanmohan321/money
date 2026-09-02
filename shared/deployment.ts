@@ -1,7 +1,7 @@
-type DeploymentEnvironment = Readonly<{ VERCEL?: string }>;
+type DeploymentEnvironment = Readonly<{ VERCEL?: string; RENDER?: string }>;
 
 export function getClientBuildDirectory(_environment: DeploymentEnvironment) {
-  return _environment.VERCEL ? 'public' : 'dist/client';
+  return 'dist/client';
 }
 
 export function shouldStartHttpServer(_environment: DeploymentEnvironment) {
