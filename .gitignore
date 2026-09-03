@@ -12,3 +12,4 @@ test-results/
 
 .vercel
 .tmp-render-cli/
+.worktrees/
