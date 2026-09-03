@@ -295,6 +295,37 @@ describe('Net Worth APIs', () => {
 });
 
 describe('DrizzleNetWorthStore', () => {
+  it('returns a multi-row aggregate wider than one numeric(20, 2) record', async () => {
+    const perRecordMaximum = '999999999999999999.00';
+    const database = {
+      execute: async (statement: SQL) => {
+        const emittedSql = new PgDialect().sqlToQuery(statement).sql.toLowerCase();
+        if (/::numeric\(20,\s*2\)/.test(emittedSql)) {
+          throw Object.assign(new Error('numeric field overflow'), { code: '22003' });
+        }
+        return {
+          rows: [{
+            manualAssets: new Decimal(perRecordMaximum).mul(2).toFixed(2),
+            receivables: '0.00',
+            manualLiabilities: '0.00',
+            borrowedDebt: '0.00',
+          }],
+        };
+      },
+    } as unknown as AppDatabase;
+
+    await expect(new DrizzleNetWorthStore(database).getNetWorth()).resolves.toEqual({
+      manualAssets: '1999999999999999998.00',
+      receivables: '0.00',
+      totalOwned: '1999999999999999998.00',
+      manualLiabilities: '0.00',
+      borrowedDebt: '0.00',
+      totalOwed: '0.00',
+      netWorth: '1999999999999999998.00',
+      status: 'positive',
+    });
+  });
+
   it('uses one aggregate statement with four scalar subqueries and Decimal composition', async () => {
     const statements: SQL[] = [];
     const database = {

@@ -109,10 +109,10 @@ export class DrizzleNetWorthStore implements NetWorthStore {
   async getNetWorth(): Promise<NetWorthSummary> {
     const result = await this.database.execute<NetWorthAggregateRow>(sql`
       select
-        coalesce((select sum(${assets.currentValue}) from ${assets}), 0)::numeric(20, 2) as "manualAssets",
-        coalesce((select sum(${moneyLent.amount}) from ${moneyLent}), 0)::numeric(20, 2) as "receivables",
-        coalesce((select sum(${liabilities.outstandingBalance}) from ${liabilities}), 0)::numeric(20, 2) as "manualLiabilities",
-        coalesce((select sum(${moneyBorrowed.amount}) from ${moneyBorrowed}), 0)::numeric(20, 2) as "borrowedDebt"
+        coalesce((select sum(${assets.currentValue}) from ${assets}), 0)::text as "manualAssets",
+        coalesce((select sum(${moneyLent.amount}) from ${moneyLent}), 0)::text as "receivables",
+        coalesce((select sum(${liabilities.outstandingBalance}) from ${liabilities}), 0)::text as "manualLiabilities",
+        coalesce((select sum(${moneyBorrowed.amount}) from ${moneyBorrowed}), 0)::text as "borrowedDebt"
     `);
     const row = result.rows[0];
     if (!row) throw new Error('Net worth aggregate query returned no row');
