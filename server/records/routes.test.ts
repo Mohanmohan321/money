@@ -111,6 +111,20 @@ describe('financial record APIs', () => {
     await agent.get(`${base}/${id}`).expect(404);
   });
 
+  it('infers a category when omitted and preserves an explicit override', async () => {
+    const inferred = await agent
+      .post('/api/transactions')
+      .send({ description: 'Swiggy', amount: '20' })
+      .expect(201);
+    expect(inferred.body.data.category).toBe('food');
+
+    const overridden = await agent
+      .post('/api/transactions')
+      .send({ description: 'Swiggy gift card', amount: '20', category: 'shopping' })
+      .expect(201);
+    expect(overridden.body.data.category).toBe('shopping');
+  });
+
   it.each([
     ['/api/transactions', { description: '', amount: '1' }],
     ['/api/lent', { personName: 'Maya', amount: '0' }],

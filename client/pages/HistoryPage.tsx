@@ -1,15 +1,27 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, ReceiptText, Trash2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, CircleDollarSign, ReceiptText, Trash2 } from 'lucide-react';
 
 import type { HistoryItem } from '../../shared/contracts';
 import { api, ApiError } from '../api';
 
 function itemLabel(item: HistoryItem): string {
-  return item.type === 'transaction' ? item.description : item.personName;
+  if (item.type === 'transaction') return item.description;
+  if (item.type === 'income') return item.source;
+  return item.personName;
 }
 
-const icons = { transaction: ReceiptText, lent: ArrowUpRight, borrowed: ArrowDownLeft };
-const typeLabels = { transaction: 'Transaction', lent: 'Money lent', borrowed: 'Money borrowed' };
+const icons = {
+  transaction: ReceiptText,
+  lent: ArrowUpRight,
+  borrowed: ArrowDownLeft,
+  income: CircleDollarSign,
+};
+const typeLabels = {
+  transaction: 'Transaction',
+  lent: 'Money lent',
+  borrowed: 'Money borrowed',
+  income: 'Income',
+};
 
 export function HistoryPage() {
   const [items, setItems] = useState<HistoryItem[]>([]);
@@ -57,14 +69,14 @@ export function HistoryPage() {
     <div className="page history-page">
       <header className="page-header"><div><p className="eyebrow">All movement</p><h1>History</h1></div></header>
       <form className="history-filters" onSubmit={applyFilters}>
-        <label>Type<select value={type} onChange={(event) => setType(event.target.value)}><option value="">All records</option><option value="transaction">Transactions</option><option value="lent">Money lent</option><option value="borrowed">Money borrowed</option></select></label>
+        <label>Type<select value={type} onChange={(event) => setType(event.target.value)}><option value="">All records</option><option value="transaction">Transactions</option><option value="income">Income</option><option value="lent">Money lent</option><option value="borrowed">Money borrowed</option></select></label>
         <label>From<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
         <label>To<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
         <button type="submit" className="secondary-button">Apply filters</button>
       </form>
       {error && <div className="page-state error" role="alert">{error}</div>}
       {loading ? <div className="page-state">Reading history…</div> : items.length === 0 ? (
-        <div className="empty-state"><ReceiptText aria-hidden="true" /><h2>No records here yet</h2><p>Log a transaction, money lent, or money borrowed to begin.</p></div>
+        <div className="empty-state"><ReceiptText aria-hidden="true" /><h2>No records here yet</h2><p>Log income, a transaction, money lent, or money borrowed to begin.</p></div>
       ) : (
         <section className="history-list" aria-label="Financial history">
           {items.map((item) => {

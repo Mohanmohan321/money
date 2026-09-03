@@ -33,6 +33,33 @@ const historyItem: HistoryItem = {
   createdAt: '2026-09-02T11:00:00.000Z',
 };
 
+const allHistoryItems: HistoryItem[] = [
+  {
+    id: '00000000-0000-4000-8000-000000000004',
+    type: 'transaction',
+    description: 'Swiggy dinner',
+    category: 'food',
+    amount: '23.40',
+    createdAt: '2026-09-02T13:00:00.000Z',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000003',
+    type: 'income',
+    source: 'Freelance site',
+    category: 'freelance',
+    amount: '5000.00',
+    createdAt: '2026-09-02T12:00:00.000Z',
+  },
+  historyItem,
+  {
+    id: '00000000-0000-4000-8000-000000000002',
+    type: 'borrowed',
+    personName: 'Arun',
+    amount: '75.25',
+    createdAt: '2026-09-02T10:00:00.000Z',
+  },
+];
+
 const dashboard: DashboardData = {
   timezone: 'Asia/Kolkata',
   today: {
@@ -63,7 +90,11 @@ class MemoryAggregateStore implements AggregateStore {
   historyQuery?: HistoryStoreQuery;
   dashboardQuery?: DashboardStoreQuery;
   analyticsQuery?: AnalyticsStoreQuery;
-  async getHistory(query: HistoryStoreQuery) { this.historyQuery = query; return { items: [historyItem], total: 1 }; }
+  historyItems: HistoryItem[] = [historyItem];
+  async getHistory(query: HistoryStoreQuery) {
+    this.historyQuery = query;
+    return { items: this.historyItems, total: this.historyItems.length };
+  }
   async getDashboard(query: DashboardStoreQuery) { this.dashboardQuery = query; return dashboard; }
   async getAnalytics(query: AnalyticsStoreQuery) { this.analyticsQuery = query; return { ...analytics, period: query.period }; }
 }
@@ -95,6 +126,28 @@ describe('history, dashboard, and analytics APIs', () => {
     expect(store.historyQuery).toEqual(expect.objectContaining({ type: 'lent', limit: 20, offset: 5 }));
     expect(store.historyQuery?.from?.toISOString()).toBe('2026-09-01T18:30:00.000Z');
     expect(store.historyQuery?.toExclusive?.toISOString()).toBe('2026-09-02T18:30:00.000Z');
+  });
+
+  it.each(['transaction', 'lent', 'borrowed', 'income'] as const)(
+    'accepts the %s History record type without changing the existing filters',
+    async (type) => {
+      await agent.get(`/api/history?type=${type}`).expect(200);
+      expect(store.historyQuery?.type).toBe(type);
+    },
+  );
+
+  it('returns income source and category without changing existing History item shapes or order', async () => {
+    store.historyItems = allHistoryItems;
+
+    const response = await agent.get('/api/history').expect(200);
+
+    expect(response.body.data.items).toEqual(allHistoryItems);
+    expect(response.body.data.items.map((item: HistoryItem) => item.type)).toEqual([
+      'transaction',
+      'income',
+      'lent',
+      'borrowed',
+    ]);
   });
 
   it('returns server-computed daily, weekly, and monthly dashboard data without a balance', async () => {

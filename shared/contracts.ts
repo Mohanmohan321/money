@@ -63,7 +63,7 @@ export const createPersonRecordSchema = z.object({
   amount: moneySchema,
 });
 
-export const recordTypeSchema = z.enum(['transaction', 'lent', 'borrowed']);
+export const recordTypeSchema = z.enum(['transaction', 'lent', 'borrowed', 'income']);
 
 function isCalendarDate(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -264,7 +264,8 @@ export interface PersonRecord {
 
 export type HistoryItem =
   | (TransactionRecord & { type: 'transaction' })
-  | (PersonRecord & { type: 'lent' | 'borrowed' });
+  | (PersonRecord & { type: 'lent' | 'borrowed' })
+  | (IncomeRecord & { type: 'income' });
 
 export interface MovementPoint {
   date: string;

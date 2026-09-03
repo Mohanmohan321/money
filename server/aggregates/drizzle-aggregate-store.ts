@@ -6,7 +6,9 @@ import type {
   CategoryStatistics,
   DashboardData,
   HistoryItem,
+  IncomeCategory,
   MovementPoint,
+  SpendingCategory,
 } from '../../shared/contracts';
 import type { AppDatabase } from '../db/client';
 import type {
@@ -43,14 +45,25 @@ export function fillDailySeries(
 }
 
 const financialRecords = sql`
-  SELECT 'transaction'::text AS type, id, description, NULL::text AS person_name, amount, created_at
+  SELECT 'transaction'::text AS type, id, description, NULL::text AS person_name,
+    NULL::text AS source, category, amount, created_at
   FROM transactions
   UNION ALL
-  SELECT 'lent'::text AS type, id, NULL::text AS description, person_name, amount, created_at
+  SELECT 'lent'::text AS type, id, NULL::text AS description, person_name,
+    NULL::text AS source, NULL::text AS category, amount, created_at
   FROM money_lent
   UNION ALL
-  SELECT 'borrowed'::text AS type, id, NULL::text AS description, person_name, amount, created_at
+  SELECT 'borrowed'::text AS type, id, NULL::text AS description, person_name,
+    NULL::text AS source, NULL::text AS category, amount, created_at
   FROM money_borrowed
+`;
+
+const historyRecords = sql`
+  ${financialRecords}
+  UNION ALL
+  SELECT 'income'::text AS type, id, NULL::text AS description, NULL::text AS person_name,
+    source, category, amount, created_at
+  FROM income
 `;
 
 function historyFilters(query: HistoryStoreQuery): SQL {
@@ -69,10 +82,23 @@ function asHistoryItem(value: unknown): HistoryItem {
     createdAt: String(item.createdAt),
   };
   if (item.type === 'transaction') {
-    return { ...base, type: 'transaction', category: 'other', description: String(item.description) };
+    return {
+      ...base,
+      type: 'transaction',
+      description: String(item.description),
+      category: item.category as SpendingCategory,
+    };
   }
   if (item.type === 'lent' || item.type === 'borrowed') {
     return { ...base, type: item.type, personName: String(item.personName) };
+  }
+  if (item.type === 'income') {
+    return {
+      ...base,
+      type: 'income',
+      source: String(item.source),
+      category: item.category as IncomeCategory,
+    };
   }
   throw new Error('Database returned an unknown financial record type');
 }
@@ -155,7 +181,7 @@ export class DrizzleAggregateStore implements AggregateStore {
 
   async getHistory(query: HistoryStoreQuery) {
     const result = await this.database.execute(sql<{ total: number; items: unknown[] }>`
-      WITH records AS (${financialRecords}),
+      WITH records AS (${historyRecords}),
       filtered AS (
         SELECT * FROM records
         ${historyFilters(query)}
@@ -174,6 +200,8 @@ export class DrizzleAggregateStore implements AggregateStore {
               'type', type,
               'description', description,
               'personName', person_name,
+              'source', source,
+              'category', category,
               'amount', amount::text,
               'createdAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
             ) ORDER BY created_at DESC, id DESC
