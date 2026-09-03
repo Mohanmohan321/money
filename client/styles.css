@@ -16,6 +16,8 @@
   --lent-soft: #f6e8d8;
   --borrowed: #9a4563;
   --borrowed-soft: #f2dfe6;
+  --income: #27734f;
+  --income-soft: #dcefe4;
   --danger: #a43f3f;
   --shadow: 0 18px 50px rgba(31, 50, 41, 0.08);
 }
@@ -117,6 +119,68 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
 .mini-rails span:nth-child(2) { height: 100%; background: var(--lent); }
 .mini-rails span:nth-child(3) { height: 72%; background: var(--borrowed); }
 
+.dashboard-page > .insight-panel:first-of-type { margin-top: 0.7rem; }
+.budget-overview { overflow: hidden; }
+.budget-overview .section-heading { align-items: flex-start; flex-wrap: wrap; }
+.compact-button { width: auto; min-height: 2.75rem; padding-inline: 0.9rem; white-space: nowrap; }
+.budget-source { width: max-content; margin: -0.35rem 0 1rem; padding: 0.3rem 0.55rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 0.68rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
+.budget-plan-grid, .budget-metric-grid, .worth-columns dl { margin: 0; }
+.budget-plan-grid { display: grid; border-top: 1px solid var(--line); }
+.budget-plan-grid > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 0.72rem 0; border-bottom: 1px solid var(--line); }
+.budget-plan-grid dt, .budget-metric-grid dt, .worth-columns dt, .net-worth-total span, .budget-score-line span { color: var(--muted); font-size: 0.7rem; font-weight: 700; }
+.budget-plan-grid dd, .budget-metric-grid dd, .worth-columns dd { margin: 0; color: var(--ink); font-family: 'IBM Plex Mono', monospace; letter-spacing: -0.035em; }
+.budget-metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1rem; border: 1px solid var(--line); border-radius: 0.8rem; background: #f5f8f6; }
+.budget-metric-grid > div { min-width: 0; padding: 0.85rem; border-bottom: 1px solid var(--line); }
+.budget-metric-grid > div:nth-child(odd) { border-right: 1px solid var(--line); }
+.budget-metric-grid > div:nth-last-child(-n + 2) { border-bottom: 0; }
+.budget-metric-grid dd { margin-top: 0.35rem; overflow-wrap: anywhere; font-size: 1.08rem; font-weight: 750; }
+.budget-metric-grid .negative, .budget-score-line .negative strong { color: var(--danger); }
+.budget-score-line { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin-top: 0.8rem; overflow: hidden; border-radius: 0.8rem; background: #3c4a42; color: white; }
+.budget-score-line > div { min-width: 0; display: grid; gap: 0.35rem; padding: 0.85rem; background: var(--ink); }
+.budget-score-line span { color: #aebbb4; }
+.budget-score-line strong { overflow-wrap: anywhere; font-family: 'IBM Plex Mono', monospace; font-size: 1.05rem; }
+.budget-editor { display: grid; gap: 0.45rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.budget-editor label { margin-top: 0.55rem; color: var(--ink); font-size: 0.75rem; font-weight: 700; }
+.budget-editor input { width: 100%; min-height: 3rem; padding: 0.7rem 0.8rem; border: 1px solid var(--line); border-radius: 0.7rem; outline: 0; background: #f5f8f6; color: var(--ink); font-family: 'IBM Plex Mono', monospace; }
+.budget-editor input:focus { border-color: var(--transaction); }
+.form-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr); gap: 0.65rem; margin-top: 0.85rem; }
+
+.worth-status { padding: 0.32rem 0.58rem; border-radius: 999px; font-weight: 750; }
+.net-worth-card.positive .worth-status { background: var(--income-soft); color: var(--income); }
+.net-worth-card.negative .worth-status { background: #f6e1e1; color: var(--danger); }
+.net-worth-card.zero .worth-status { background: #e4eae6; color: var(--muted); }
+.net-worth-total { display: grid; gap: 0.35rem; margin-bottom: 1rem; padding: 1rem; border-left: 0.3rem solid currentColor; background: #f5f8f6; }
+.net-worth-card.positive .net-worth-total { color: var(--income); }
+.net-worth-card.negative .net-worth-total { color: var(--danger); }
+.net-worth-card.zero .net-worth-total { color: var(--muted); }
+.net-worth-total strong { color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: clamp(1.7rem, 9vw, 2.7rem); letter-spacing: -0.06em; overflow-wrap: anywhere; }
+.worth-columns { display: grid; gap: 0.8rem; }
+.worth-columns dl { padding: 0 0.85rem; border: 1px solid var(--line); border-radius: 0.8rem; }
+.worth-columns dl > div { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.72rem 0; border-bottom: 1px solid var(--line); }
+.worth-columns dl > div:last-child { border-bottom: 0; font-weight: 750; }
+.worth-columns dd { overflow-wrap: anywhere; text-align: right; }
+
+.recent-activity .section-heading { margin-bottom: 0.8rem; }
+.text-link, .text-button { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--transaction); font-size: 0.78rem; font-weight: 750; text-decoration: underline; text-underline-offset: 0.22rem; }
+.recent-activity .history-item { grid-template-columns: auto minmax(0, 1fr) auto; }
+.recent-activity .history-item b { overflow-wrap: anywhere; text-align: right; }
+.activity-category { min-width: 0; }
+.category-badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.48rem; border-radius: 0.65rem; font-size: 0.68rem; font-weight: 750; }
+.category-badge svg { width: 1rem; height: 1rem; }
+.category-food { background: #f8e6d2; color: #995313; }
+.category-travel { background: #dfeaf5; color: #2e608d; }
+.category-shopping { background: #ebe2f3; color: #704791; }
+.category-coffee { background: #eee4dd; color: #76513b; }
+.category-entertainment { background: #f4e0e8; color: #91445f; }
+.category-health { background: var(--income-soft); color: var(--income); }
+.category-bills { background: var(--transaction-soft); color: var(--transaction); }
+.category-other { background: #e5e9e7; color: #56635d; }
+.history-item.income .history-icon { background: var(--income-soft); color: var(--income); }
+.history-item.income b { color: var(--income); }
+.compact-empty { margin: 0; padding: 1.1rem; border: 1px dashed var(--line); border-radius: 0.8rem; color: var(--muted); text-align: center; }
+.partial-failure { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; margin: 0.7rem 0 1rem; padding: 0.7rem 0.8rem 0.7rem 1rem; border: 1px solid #e1c1a1; border-left: 0.3rem solid var(--lent); border-radius: 0.8rem; background: var(--lent-soft); color: #75420f; font-size: 0.78rem; }
+.partial-failure .text-button { flex: 0 0 auto; color: #75420f; }
+
 .entry-tabs { display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }
 .entry-tabs button { min-height: 5.4rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.55rem 0.3rem; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 0.7rem; }
 .entry-tabs button:last-child { border-right: 0; }
@@ -201,6 +265,13 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
   .history-filters { grid-template-columns: 1.25fr 1fr 1fr auto; align-items: end; }
   .history-filters label:first-child, .history-filters .secondary-button { grid-column: auto; }
   .history-filters .secondary-button { width: auto; padding-inline: 1rem; }
+  .budget-plan-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .budget-plan-grid > div { display: grid; gap: 0.35rem; padding: 0.85rem; border-bottom: 0; border-right: 1px solid var(--line); }
+  .budget-plan-grid > div:last-child { border-right: 0; }
+  .budget-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .budget-metric-grid > div, .budget-metric-grid > div:nth-child(odd) { border-right: 1px solid var(--line); border-bottom: 0; }
+  .budget-metric-grid > div:last-child { border-right: 0; }
+  .worth-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (min-width: 980px) {
