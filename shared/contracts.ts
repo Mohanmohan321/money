@@ -158,6 +158,29 @@ export const analyticsQuerySchema = dateFilterSchema.and(
   }),
 );
 
+const planningDateSchema = localDateSchema.refine(
+  isCalendarDate,
+  'Date must be a valid calendar date',
+);
+const yearSchema = z.string().regex(/^\d{4}$/, 'Year must use YYYY');
+
+export const monthlyAnalysisQuerySchema = z.object({
+  month: monthSchema,
+  week: planningDateSchema.optional(),
+});
+
+export const budgetBreakdownQuerySchema = z
+  .object({
+    year: yearSchema,
+    month: monthSchema,
+  })
+  .refine(({ year, month }) => month.startsWith(`${year}-`), {
+    message: 'Month must be in the selected year',
+    path: ['month'],
+  });
+
+export const annualAnalysisQuerySchema = z.object({ year: yearSchema });
+
 export type RecordType = z.infer<typeof recordTypeSchema>;
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 export type CreatePersonRecordInput = z.infer<typeof createPersonRecordSchema>;
@@ -177,6 +200,9 @@ export type CreateAssetInput = z.infer<typeof createAssetSchema>;
 export type UpdateAssetInput = z.infer<typeof updateAssetSchema>;
 export type CreateLiabilityInput = z.infer<typeof createLiabilitySchema>;
 export type UpdateLiabilityInput = z.infer<typeof updateLiabilitySchema>;
+export type MonthlyAnalysisQuery = z.infer<typeof monthlyAnalysisQuerySchema>;
+export type BudgetBreakdownQuery = z.infer<typeof budgetBreakdownQuerySchema>;
+export type AnnualAnalysisQuery = z.infer<typeof annualAnalysisQuerySchema>;
 
 export interface TransactionRecord {
   id: string;
@@ -262,6 +288,67 @@ export interface BudgetSummary {
   amountLeft: string;
   budgetScore: string;
   spendingRemaining: string;
+}
+
+export interface CategorySpend {
+  category: SpendingCategory;
+  amount: string;
+  percentage: string;
+}
+
+export type RecentActivity =
+  | (TransactionRecord & { type: 'transaction' })
+  | (IncomeRecord & { type: 'income' });
+
+export interface DailyBudgetPoint {
+  date: string;
+  income: string;
+  spending: string;
+  savings: string;
+  activity: RecentActivity[];
+}
+
+export interface MonthlyAnalysisData {
+  month: string;
+  budget: MonthlyBudget;
+  summary: BudgetSummary;
+  categories: CategorySpend[];
+  weekFrom: string;
+  weekTo: string;
+  week: DailyBudgetPoint[];
+  recentActivity: RecentActivity[];
+}
+
+export interface MonthBudgetBreakdown {
+  month: string;
+  income: string;
+  spending: string;
+  savings: string;
+  amountLeft: string;
+  budgetUsage: string;
+}
+
+export interface CalendarDay extends DailyBudgetPoint {
+  vaultContributionCount: number;
+  subscriptionPaymentCount: number;
+  activity: RecentActivity[];
+}
+
+export interface BudgetBreakdownData {
+  year: string;
+  selectedMonth: string;
+  months: MonthBudgetBreakdown[];
+  days: CalendarDay[];
+}
+
+export interface AnnualReportData {
+  year: string;
+  summary: BudgetSummary;
+  months: MonthBudgetBreakdown[];
+  spendingByCategory: CategorySpend[];
+  incomeBySource: Array<{ source: string; amount: string; percentage: string }>;
+  highestSpendingMonth?: string;
+  bestSavingMonth?: string;
 }
 
 export interface PersonRecord {

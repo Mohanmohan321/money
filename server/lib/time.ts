@@ -10,16 +10,35 @@ export interface OptionalUtcRange {
   toExclusive?: Date;
 }
 
-function parseLocalDate(value: string, label: 'from' | 'to', timezone: string): DateTime {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error(`Invalid \`${label}\` date`);
+function parseStrictLocalValue(
+  value: string,
+  format: string,
+  pattern: RegExp,
+  errorMessage: string,
+  timezone: string,
+): DateTime {
+  if (!pattern.test(value)) {
+    throw new Error(errorMessage);
   }
 
-  const date = DateTime.fromISO(value, { zone: timezone });
-  if (!date.isValid || date.toFormat('yyyy-MM-dd') !== value) {
-    throw new Error(`Invalid \`${label}\` date`);
+  const parsed = DateTime.fromFormat(value, format, {
+    zone: timezone,
+    setZone: true,
+  });
+  if (!parsed.isValid || parsed.toFormat(format) !== value) {
+    throw new Error(errorMessage);
   }
-  return date.startOf('day');
+  return parsed;
+}
+
+function parseLocalDate(value: string, label: 'from' | 'to', timezone: string): DateTime {
+  return parseStrictLocalValue(
+    value,
+    'yyyy-MM-dd',
+    /^\d{4}-\d{2}-\d{2}$/,
+    `Invalid \`${label}\` date`,
+    timezone,
+  ).startOf('day');
 }
 
 function toUtcDate(value: DateTime): Date {
@@ -47,6 +66,51 @@ export function localDateBounds(
     ...(to
       ? { toExclusive: toUtcDate(parseLocalDate(to, 'to', timezone).plus({ days: 1 })) }
       : {}),
+  };
+}
+
+export function monthRange(month: string, timezone: string): UtcRange {
+  const start = parseStrictLocalValue(
+    month,
+    'yyyy-MM',
+    /^\d{4}-\d{2}$/,
+    'Invalid month',
+    timezone,
+  ).startOf('month');
+
+  return {
+    from: toUtcDate(start),
+    toExclusive: toUtcDate(start.plus({ months: 1 })),
+  };
+}
+
+export function yearRange(year: string, timezone: string): UtcRange {
+  const start = parseStrictLocalValue(
+    year,
+    'yyyy',
+    /^\d{4}$/,
+    'Invalid year',
+    timezone,
+  ).startOf('year');
+
+  return {
+    from: toUtcDate(start),
+    toExclusive: toUtcDate(start.plus({ years: 1 })),
+  };
+}
+
+export function weekRangeContaining(localDate: string, timezone: string): UtcRange {
+  const start = parseStrictLocalValue(
+    localDate,
+    'yyyy-MM-dd',
+    /^\d{4}-\d{2}-\d{2}$/,
+    'Invalid local date',
+    timezone,
+  ).startOf('week');
+
+  return {
+    from: toUtcDate(start),
+    toExclusive: toUtcDate(start.plus({ weeks: 1 })),
   };
 }
 

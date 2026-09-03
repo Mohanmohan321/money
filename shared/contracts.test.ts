@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  annualAnalysisQuerySchema,
+  budgetBreakdownQuerySchema,
   createPersonRecordSchema,
   createIncomeSchema,
   createTransactionSchema,
   moneySchema,
+  monthlyAnalysisQuerySchema,
   updateIncomeSchema,
   updateVaultSchema,
   upsertBudgetSchema,
@@ -98,5 +101,28 @@ describe('budget contracts', () => {
     expect(() => updateIncomeSchema.parse({
       source: 'Bonus', category: 'bonus', amount: '1', createdAt: '2026-09-01',
     })).toThrow();
+  });
+});
+
+describe('planning query contracts', () => {
+  it('validates monthly, breakdown, and annual planning queries', () => {
+    expect(monthlyAnalysisQuerySchema.parse({ month: '2026-09', week: '2026-09-03' }))
+      .toEqual({ month: '2026-09', week: '2026-09-03' });
+    expect(monthlyAnalysisQuerySchema.parse({ month: '2026-09' }))
+      .toEqual({ month: '2026-09' });
+    expect(budgetBreakdownQuerySchema.parse({ year: '2026', month: '2026-09' }))
+      .toEqual({ year: '2026', month: '2026-09' });
+    expect(annualAnalysisQuerySchema.parse({ year: '2026' }))
+      .toEqual({ year: '2026' });
+  });
+
+  it.each([
+    ['invalid month', monthlyAnalysisQuerySchema, { month: '2026-13' }],
+    ['impossible week date', monthlyAnalysisQuerySchema, { month: '2026-09', week: '2026-02-30' }],
+    ['short year', annualAnalysisQuerySchema, { year: '26' }],
+    ['malformed year', annualAnalysisQuerySchema, { year: '20x6' }],
+    ['month outside selected year', budgetBreakdownQuerySchema, { year: '2026', month: '2025-09' }],
+  ])('rejects %s', (_label, schema, value) => {
+    expect(() => schema.parse(value)).toThrow();
   });
 });
