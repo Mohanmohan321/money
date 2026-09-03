@@ -361,7 +361,7 @@ Expected: FAIL because Monthly budget is not rendered.
 
 - [ ] **Step 4: Compose Dashboard data loading and refresh**
 
-Derive current `YYYY-MM` with `Intl.DateTimeFormat` parts, not UTC string slicing. Load existing dashboard, monthly analysis, Net Worth, and Vault list with `Promise.all`. On budget save, await the PUT, then refetch monthly analysis. If any critical top-panel request fails, show one actionable alert while preserving successfully loaded existing dashboard content.
+Derive current `YYYY-MM` with `Intl.DateTimeFormat` parts, not UTC string slicing. Load existing dashboard, monthly analysis, Net Worth, and Vault list with `Promise.allSettled`, storing each successful result independently. On budget save, await the PUT, then refetch monthly analysis. If any top-panel request fails, show one actionable alert while preserving every successfully loaded Dashboard section.
 
 - [ ] **Step 5: Run Dashboard tests**
 

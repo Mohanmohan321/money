@@ -405,7 +405,7 @@ export type CreateVaultContributionInput = z.infer<typeof createVaultContributio
 
 List Vaults with a left join and `COALESCE(sum(vault_contributions.amount), 0)`. Calculate percentage with Decimal.js and do not clamp progress, so overfunded goals can show more than 100%. Create General Savings lazily with name `General Savings`, emoji `💰`, and target amount `1.00`; the UI treats this target as open-ended and hides its progress bar.
 
-Wrap the existence check and contribution insert in `database.transaction`. Return stable codes `VAULT_NOT_FOUND`, `VAULT_HAS_CONTRIBUTIONS`, and `VAULT_ARCHIVED`.
+Use one atomic PostgreSQL statement with `target` and `inserted` CTEs: select the Vault status, insert the contribution only when that status is `active`, and return both the target status and inserted row. If no target row exists, return `VAULT_NOT_FOUND`; if the target is archived, return `VAULT_ARCHIVED`. This avoids the interactive `database.transaction()` API, which the configured Neon HTTP driver explicitly does not support. Return `VAULT_HAS_CONTRIBUTIONS` when hard deletion finds existing contributions.
 
 - [ ] **Step 5: Run Vault tests**
 
