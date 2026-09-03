@@ -4,14 +4,16 @@ import type {
   CreatePersonRecordInput,
   CreateTransactionInput,
   PersonRecord,
+  SpendingCategory,
   TransactionRecord,
 } from '../../shared/contracts';
+import { categorizeTransaction } from '../../shared/budgeting';
 import type { AppDatabase } from '../db/client';
 import { moneyBorrowed, moneyLent, transactions } from '../db/schema';
 import type { ListFilters, RecordStore } from './store';
 
 function transactionResult(row: typeof transactions.$inferSelect): TransactionRecord {
-  return { ...row, category: 'other', createdAt: row.createdAt.toISOString() };
+  return { ...row, category: row.category as SpendingCategory, createdAt: row.createdAt.toISOString() };
 }
 
 function personResult(row: typeof moneyLent.$inferSelect): PersonRecord {
@@ -22,7 +24,10 @@ export class DrizzleRecordStore implements RecordStore {
   constructor(private readonly database: AppDatabase) {}
 
   async createTransaction(input: CreateTransactionInput) {
-    const [row] = await this.database.insert(transactions).values(input).returning();
+    const [row] = await this.database.insert(transactions).values({
+      ...input,
+      category: input.category ?? categorizeTransaction(input.description),
+    }).returning();
     return transactionResult(row);
   }
 

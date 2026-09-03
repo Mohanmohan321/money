@@ -8,6 +8,13 @@
       "when": 1788318537135,
       "tag": "0000_robust_anita_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788424933292,
+      "tag": "0001_budgeting_foundation",
+      "breakpoints": true
     }
   ]
 }

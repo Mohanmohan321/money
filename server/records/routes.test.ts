@@ -8,6 +8,7 @@ import type {
   TransactionRecord,
 } from '../../shared/contracts';
 import { createApp } from '../app';
+import { categorizeTransaction } from '../../shared/budgeting';
 import type { SessionStore } from '../auth/session-store';
 import type { AppConfig } from '../config';
 import { createRecordsRouter } from './routes';
@@ -28,7 +29,12 @@ class MemoryRecordStore implements RecordStore {
   lastFilters: ListFilters = {};
 
   async createTransaction(input: CreateTransactionInput) {
-    const item = { id: `00000000-0000-4000-8000-${String(this.nextId++).padStart(12, '0')}`, ...input, category: input.category ?? 'other' as const, createdAt: '2026-09-02T10:00:00.000Z' };
+    const item = {
+      id: `00000000-0000-4000-8000-${String(this.nextId++).padStart(12, '0')}`,
+      ...input,
+      category: input.category ?? categorizeTransaction(input.description),
+      createdAt: '2026-09-02T10:00:00.000Z',
+    };
     this.transactions.set(item.id, item);
     return item;
   }
@@ -77,10 +83,10 @@ describe('financial record APIs', () => {
   });
 
   it.each([
-    { base: '/api/transactions', input: { description: '  Groceries  ', amount: '23.4' }, label: 'description', expectedLabel: 'Groceries', expectedAmount: '23.40' },
+    { base: '/api/transactions', input: { description: '  Groceries  ', amount: '23.4' }, label: 'description', expectedLabel: 'Groceries', expectedAmount: '23.40', expectedCategory: 'food' },
     { base: '/api/lent', input: { personName: '  Maya  ', amount: '50' }, label: 'personName', expectedLabel: 'Maya', expectedAmount: '50.00' },
     { base: '/api/borrowed', input: { personName: '  Arun  ', amount: '75.25' }, label: 'personName', expectedLabel: 'Arun', expectedAmount: '75.25' },
-  ])('creates, lists, reads, and deletes $base records', async ({ base, input, label, expectedLabel, expectedAmount }) => {
+  ])('creates, lists, reads, and deletes $base records', async ({ base, input, label, expectedLabel, expectedAmount, expectedCategory }) => {
     const created = await agent
       .post(base)
       .send({ ...input, id: 'client-controlled', createdAt: '2000-01-01T00:00:00Z' })
@@ -93,6 +99,7 @@ describe('financial record APIs', () => {
         [label]: expectedLabel,
         amount: expectedAmount,
         createdAt: expect.stringMatching(/^2026-09-02T/),
+        ...(expectedCategory ? { category: expectedCategory } : {}),
       }),
     });
 
