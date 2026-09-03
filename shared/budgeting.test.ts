@@ -73,6 +73,22 @@ describe('budgeting domain', () => {
     });
   });
 
+  it.each([
+    ['0.03', '0.01', '33.33'],
+    ['0.07', '0.06', '85.71'],
+  ] as const)(
+    'rounds repeating savings ratio %s / %s to %s percent',
+    (salary, savings, budgetScore) => {
+      expect(calculateBudgetSummary({
+        salary,
+        additionalIncome: '0.00',
+        spending: '0.00',
+        savings,
+        spendingLimit: '0.00',
+      }).budgetScore).toBe(budgetScore);
+    },
+  );
+
   it('returns a zero score for zero income and preserves negative shortfalls', () => {
     expect(calculateBudgetSummary({
       salary: '0.00', additionalIncome: '0.00', spending: '10.00',

@@ -25,6 +25,7 @@ import {
   vaultContributions,
   vaults,
 } from './schema';
+import { CleanupRegistry, settleAndRegister } from './integration-cleanup';
 
 const GENERAL_SAVINGS_VAULT_ID = '00000000-0000-4000-8000-000000000001';
 const MAX_MONEY = '999999999999999999.99';
@@ -67,27 +68,6 @@ function splitMigration(source: string): string[] {
     .split('--> statement-breakpoint')
     .map((statement) => statement.trim())
     .filter(Boolean);
-}
-
-async function runCleanup(steps: Array<() => Promise<unknown>>): Promise<void> {
-  const errors: unknown[] = [];
-  for (const step of steps) {
-    try {
-      await step();
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-  if (errors.length > 0) {
-    throw new AggregateError(errors, 'Disposable database integration cleanup failed');
-  }
-}
-
-function cleanupIfDefined<T>(
-  value: T | undefined,
-  step: (definedValue: T) => Promise<unknown>,
-): Array<() => Promise<unknown>> {
-  return value === undefined ? [] : [() => step(value)];
 }
 
 async function allocateBudgetMonths(database: AppDatabase): Promise<[string, string]> {
@@ -135,9 +115,11 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
       '"public"."vaults"',
       `"${isolatedSchema}"."vaults"`,
     );
+    const cleanup = new CleanupRegistry();
+    cleanup.add(() => sqlClient.query(`drop schema if exists "${isolatedSchema}" cascade`));
 
-    await sqlClient.query(`create schema "${isolatedSchema}"`);
     try {
+      await sqlClient.query(`create schema "${isolatedSchema}"`);
       await sqlClient.transaction((transaction) => [
         transaction.query(`set local search_path to "${isolatedSchema}"`),
         ...splitMigration(migration0).map((statement) => transaction.query(statement)),
@@ -167,7 +149,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         ['Constraint probe', 'other', '0.00'],
       )).rejects.toThrow();
     } finally {
-      await sqlClient.query(`drop schema if exists "${isolatedSchema}" cascade`);
+      await cleanup.run();
     }
   });
 
@@ -177,19 +159,17 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
     const description = `Integration transaction ${suffix}`;
     const lender = `Integration lender ${suffix}`;
     const borrower = `Integration borrower ${suffix}`;
-    const createdIds: Array<{ type: 'transaction' | 'lent' | 'borrowed'; id: string }> = [];
+    const cleanup = new CleanupRegistry();
     const from = new Date(Date.now() - 5 * 60_000);
     const toExclusive = new Date(Date.now() + 5 * 60_000);
 
     try {
       const transaction = await records.createTransaction({ description, amount: '10.10' });
+      cleanup.add(() => records.deleteTransaction(transaction.id));
       const lent = await records.createLent({ personName: lender, amount: '20.20' });
+      cleanup.add(() => records.deleteLent(lent.id));
       const borrowed = await records.createBorrowed({ personName: borrower, amount: '30.30' });
-      createdIds.push(
-        { type: 'transaction', id: transaction.id },
-        { type: 'lent', id: lent.id },
-        { type: 'borrowed', id: borrowed.id },
-      );
+      cleanup.add(() => records.deleteBorrowed(borrowed.id));
 
       expect(await records.getTransaction(transaction.id)).toEqual(expect.objectContaining({
         amount: '10.10',
@@ -220,17 +200,16 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
       expect(analytics.lendingByPerson).toContainEqual({ personName: lender, totalAmount: '20.20', numberOfLoans: 1 });
       expect(analytics.borrowingByPerson).toContainEqual({ personName: borrower, totalAmount: '30.30', numberOfBorrowings: 1 });
 
+      const constraintProbeId = randomUUID();
+      cleanup.add(() => records.deleteTransaction(constraintProbeId));
       await expect(database.insert(transactions).values({
+        id: constraintProbeId,
         description: `Constraint probe ${suffix}`,
         category: 'other',
         amount: '0.00',
       })).rejects.toThrow();
     } finally {
-      await runCleanup([...createdIds].reverse().map((item) => async () => {
-        if (item.type === 'transaction') await records.deleteTransaction(item.id);
-        if (item.type === 'lent') await records.deleteLent(item.id);
-        if (item.type === 'borrowed') await records.deleteBorrowed(item.id);
-      }));
+      await cleanup.run();
     }
   });
 
@@ -238,12 +217,14 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
     const { sessions } = testStores();
     const token = `integration-${randomUUID()}`;
     const digest = hashSessionToken(token);
-    await sessions.create(digest, new Date(Date.now() + 60_000));
+    const cleanup = new CleanupRegistry();
     try {
+      await sessions.create(digest, new Date(Date.now() + 60_000));
+      cleanup.add(() => sessions.delete(digest));
       expect(await sessions.isValid(digest, new Date())).toBe(true);
       expect(await sessions.isValid(hashSessionToken(token), new Date())).toBe(true);
     } finally {
-      await sessions.delete(digest);
+      await cleanup.run();
     }
     expect(await sessions.isValid(digest, new Date())).toBe(false);
   });
@@ -252,7 +233,9 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
     const { database, budgets } = testStores();
     const suffix = randomUUID();
     const [savedMonth, suggestedMonth] = await allocateBudgetMonths(database);
-    let incomeId: string | undefined;
+    const cleanup = new CleanupRegistry();
+    cleanup.add(() => database.delete(monthlyBudgets).where(eq(monthlyBudgets.month, suggestedMonth)));
+    cleanup.add(() => database.delete(monthlyBudgets).where(eq(monthlyBudgets.month, savedMonth)));
 
     try {
       await budgets.upsertBudget(savedMonth, {
@@ -273,7 +256,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         category: 'freelance',
         amount: '40.40',
       });
-      incomeId = created.id;
+      cleanup.add(() => budgets.deleteIncome(created.id));
       const correctedAt = new Date(Date.now() - 30_000).toISOString();
       expect(await budgets.updateIncome(created.id, {
         source: `Corrected income ${suffix}`,
@@ -288,18 +271,24 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         createdAt: correctedAt,
       }));
     } finally {
-      await runCleanup([
-        ...cleanupIfDefined(incomeId, (id) => budgets.deleteIncome(id)),
-        () => database.delete(monthlyBudgets).where(eq(monthlyBudgets.month, savedMonth)),
-        () => database.delete(monthlyBudgets).where(eq(monthlyBudgets.month, suggestedMonth)),
-      ]);
+      await cleanup.run();
     }
   });
 
   it('protects and repairs General Savings while preserving its financial settings', async () => {
     const { database, vaultStore } = testStores();
     const canonicalBefore = await vaultStore.getVault(GENERAL_SAVINGS_VAULT_ID);
-    let contributionId: string | undefined;
+    const cleanup = new CleanupRegistry();
+    cleanup.add(canonicalBefore
+      ? () => database.update(vaults).set({
+        name: canonicalBefore.name,
+        emoji: canonicalBefore.emoji,
+        targetAmount: canonicalBefore.targetAmount,
+        targetDate: canonicalBefore.targetDate ?? null,
+        status: canonicalBefore.status,
+        updatedAt: new Date(canonicalBefore.updatedAt),
+      }).where(eq(vaults.id, GENERAL_SAVINGS_VAULT_ID))
+      : () => database.delete(vaults).where(eq(vaults.id, GENERAL_SAVINGS_VAULT_ID)));
 
     try {
       await vaultStore.listVaults();
@@ -343,29 +332,19 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         { amount: '0.99' },
       );
       expect(contribution.outcome).toBe('created');
-      if (contribution.outcome === 'created') contributionId = contribution.contribution.id;
+      if (contribution.outcome === 'created') {
+        cleanup.add(() => database.delete(vaultContributions)
+          .where(eq(vaultContributions.id, contribution.contribution.id)));
+      }
     } finally {
-      await runCleanup([
-        ...cleanupIfDefined(contributionId, (id) => database.delete(vaultContributions)
-          .where(eq(vaultContributions.id, id))),
-        canonicalBefore
-          ? () => database.update(vaults).set({
-            name: canonicalBefore.name,
-            emoji: canonicalBefore.emoji,
-            targetAmount: canonicalBefore.targetAmount,
-            targetDate: canonicalBefore.targetDate ?? null,
-            status: canonicalBefore.status,
-          }).where(eq(vaults.id, GENERAL_SAVINGS_VAULT_ID))
-          : () => database.delete(vaults).where(eq(vaults.id, GENERAL_SAVINGS_VAULT_ID)),
-      ]);
+      await cleanup.run();
     }
   });
 
   it('updates Vaults and preserves exact high-precision concurrent contribution aggregates', async () => {
     const { database, vaultStore } = testStores();
     const suffix = randomUUID();
-    let vaultId: string | undefined;
-    const contributionIds: string[] = [];
+    const cleanup = new CleanupRegistry();
 
     try {
       const created = await vaultStore.createVault({
@@ -373,7 +352,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         emoji: 'IV',
         targetAmount: '200.20',
       });
-      vaultId = created.id;
+      cleanup.add(() => database.delete(vaults).where(eq(vaults.id, created.id)));
       expect(await vaultStore.updateVault(created.id, {
         name: `Updated Vault ${suffix}`,
         emoji: 'UV',
@@ -388,52 +367,61 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         }),
       }));
 
-      const contributions = await Promise.all([
+      const contributions = await settleAndRegister([
         vaultStore.createContribution(created.id, { amount: MAX_MONEY }),
         vaultStore.createContribution(created.id, { amount: MAX_MONEY }),
-      ]);
+      ], (contribution) => {
+        if (contribution.outcome === 'created') {
+          cleanup.add(() => database.delete(vaultContributions)
+            .where(eq(vaultContributions.id, contribution.contribution.id)));
+        }
+      });
       for (const contribution of contributions) {
         expect(contribution.outcome).toBe('created');
-        if (contribution.outcome === 'created') contributionIds.push(contribution.contribution.id);
       }
       expect(await vaultStore.getVault(created.id)).toEqual(expect.objectContaining({
         savedAmount: '1999999999999999999.98',
         progressPercent: '19999999999999999999800.00',
       }));
     } finally {
-      await runCleanup([
-        ...contributionIds.map((id) => () => database.delete(vaultContributions)
-          .where(eq(vaultContributions.id, id))),
-        ...cleanupIfDefined(vaultId, (id) => database.delete(vaults).where(eq(vaults.id, id))),
-      ]);
+      await cleanup.run();
     }
   });
 
   it('serializes a real Vault delete/contribution race without orphaning data', async () => {
     const { database, vaultStore } = testStores();
-    const created = await vaultStore.createVault({
-      name: `Race Vault ${randomUUID()}`,
-      emoji: 'RV',
-      targetAmount: '10.00',
-    });
-    let contributionId: string | undefined;
+    const cleanup = new CleanupRegistry();
 
     try {
-      const [deletion, contribution] = await Promise.all([
+      const created = await vaultStore.createVault({
+        name: `Race Vault ${randomUUID()}`,
+        emoji: 'RV',
+        targetAmount: '10.00',
+      });
+      cleanup.add(() => database.delete(vaults).where(eq(vaults.id, created.id)));
+      const [deletionResult, contributionResult] = await Promise.allSettled([
         vaultStore.deleteVault(created.id),
         vaultStore.createContribution(created.id, { amount: '0.99' }),
       ]);
-      if (contribution.outcome === 'created') contributionId = contribution.contribution.id;
+      if (contributionResult.status === 'fulfilled' && contributionResult.value.outcome === 'created') {
+        const contributionId = contributionResult.value.contribution.id;
+        cleanup.add(() => database.delete(vaultContributions)
+          .where(eq(vaultContributions.id, contributionId)));
+      }
+      if (deletionResult.status === 'rejected' || contributionResult.status === 'rejected') {
+        throw new AggregateError([
+          ...(deletionResult.status === 'rejected' ? [deletionResult.reason] : []),
+          ...(contributionResult.status === 'rejected' ? [contributionResult.reason] : []),
+        ], 'Concurrent Vault race setup failed');
+      }
+      const deletion = deletionResult.value;
+      const contribution = contributionResult.value;
       expect([
         { deletion: 'deleted', contribution: 'not_found' },
         { deletion: 'has_contributions', contribution: 'created' },
       ]).toContainEqual({ deletion, contribution: contribution.outcome });
     } finally {
-      await runCleanup([
-        ...cleanupIfDefined(contributionId, (id) => database.delete(vaultContributions)
-          .where(eq(vaultContributions.id, id))),
-        () => database.delete(vaults).where(eq(vaults.id, created.id)),
-      ]);
+      await cleanup.run();
     }
   });
 
@@ -441,7 +429,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
     const { database, netWorth } = testStores();
     const suffix = randomUUID();
     const before = await netWorth.getNetWorth();
-    const assetIds: string[] = [];
+    const cleanup = new CleanupRegistry();
 
     try {
       for (const label of ['A', 'B']) {
@@ -450,7 +438,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
           type: 'cash',
           currentValue: MAX_MONEY,
         });
-        assetIds.push(asset.id);
+        cleanup.add(() => database.delete(assets).where(eq(assets.id, asset.id)));
       }
       const after = await netWorth.getNetWorth();
       const PreciseDecimal = Decimal.clone({ precision: 50 });
@@ -459,15 +447,17 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
       expect(new PreciseDecimal(after.netWorth).minus(before.netWorth).toFixed(2))
         .toBe('1999999999999999999.98');
     } finally {
-      await runCleanup(assetIds.map((id) => () => database.delete(assets).where(eq(assets.id, id))));
+      await cleanup.run();
     }
   });
 
   it('keeps foundation records discoverable through the production history aggregate', async () => {
     const { database, budgets, aggregates } = testStores();
     const source = `History income ${randomUUID()}`;
-    const created = await budgets.createIncome({ source, category: 'bonus', amount: '12.34' });
+    const cleanup = new CleanupRegistry();
     try {
+      const created = await budgets.createIncome({ source, category: 'bonus', amount: '12.34' });
+      cleanup.add(() => database.delete(income).where(eq(income.id, created.id)));
       const history = await aggregates.getHistory({ limit: 100, offset: 0, type: 'income' });
       expect(history.items).toContainEqual(expect.objectContaining({
         id: created.id,
@@ -477,21 +467,23 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         amount: '12.34',
       }));
     } finally {
-      await database.delete(income).where(eq(income.id, created.id));
+      await cleanup.run();
     }
   });
 
   it('persists liability values without losing cents', async () => {
     const { database, netWorth } = testStores();
-    const created = await netWorth.createLiability({
-      name: `Integration liability ${randomUUID()}`,
-      type: 'loan',
-      outstandingBalance: '25.05',
-    });
+    const cleanup = new CleanupRegistry();
     try {
+      const created = await netWorth.createLiability({
+        name: `Integration liability ${randomUUID()}`,
+        type: 'loan',
+        outstandingBalance: '25.05',
+      });
+      cleanup.add(() => database.delete(liabilities).where(eq(liabilities.id, created.id)));
       expect(created.outstandingBalance).toBe('25.05');
     } finally {
-      await database.delete(liabilities).where(eq(liabilities.id, created.id));
+      await cleanup.run();
     }
   });
 });

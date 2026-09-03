@@ -108,3 +108,43 @@ No live PostgreSQL acceptance is claimed. The suite is ready for a separately su
 - Corrected documentation: `docs/superpowers/specs/2026-09-03-budgeting-intelligence-design.md`, `docs/superpowers/plans/2026-09-03-budgeting-foundation.md`
 
 The exact final commit SHA is reported in the post-commit handoff. This report is part of that commit, so it cannot embed its own content-addressed Git SHA.
+
+## Round 2 Re-review Fixes
+
+Round-2 starting SHA: `1b44959593ff92d30acec553fa492ce879354fa2`
+
+### Findings addressed
+
+1. **Repeating-ratio Budget Score precision**
+   - The scoped Decimal precision is now `max(16, widestOperand + 2)`. The dynamic growth guard still preserves the maximum-value arithmetic from round 1, while the minimum supplies sufficient significant digits before the two-decimal percentage rounding boundary.
+   - Added literal regressions for `0.01 / 0.03 * 100 = 33.33` and `0.06 / 0.07 * 100 = 85.71`.
+
+2. **Failure-safe disposable integration cleanup**
+   - Added a test-only `CleanupRegistry` that registers cleanup immediately, executes in LIFO order so child rows are removed before parents, attempts every registered step even after an individual failure, and aggregates cleanup errors.
+   - Concurrent contribution setup now uses `Promise.allSettled` through `settleAndRegister`, registering every fulfilled insert before surfacing any sibling rejection. The delete/contribution race applies the same failure-safe result handling.
+   - Every generated record ID is registered immediately after its create result. Known month/schema cleanup is registered before mutation. A deterministic ID is supplied and pre-registered for the constraint probe.
+   - Canonical General Savings restoration is registered before repair, removes the test contribution first, and restores `name`, `emoji`, target amount/date, status, and the exact pre-existing `updatedAt`. A canonical row created solely by the test is deleted instead.
+
+### Round-2 RED/GREEN evidence
+
+| Cycle | RED | GREEN |
+|---|---|---|
+| Budget division precision | `npm.cmd test -- shared/budgeting.test.ts` -> 2 failed, 38 passed; received `33.30`/`85.70` instead of `33.33`/`85.71` | Same command -> 40/40 passed |
+| Partial-setup cleanup | `npm.cmd test -- server/db/integration-cleanup.test.ts` -> 2/2 failed; cleanup stopped at the failing child and `Promise.all` lost the fulfilled sibling | Same command -> 2/2 passed |
+
+### Round-2 final verification
+
+| Command | Result |
+|---|---|
+| `npm.cmd test -- shared/budgeting.test.ts server/db/integration-cleanup.test.ts server/db/schema.test.ts` | exit 0; 3 files, 44 tests passed |
+| `npm.cmd test` | exit 0; 17 files, 177 tests passed |
+| `npm.cmd run typecheck` | exit 0; `tsc --noEmit` |
+| `npm.cmd run db:check` | exit 0; Drizzle Kit: `Everything's fine` |
+| `git diff --check` | exit 0; no whitespace errors after report append |
+| `npm.cmd run test:integration` | exit 1 by the existing fail-closed guard; 10 tests skipped because `TEST_DATABASE_URL` is absent |
+
+No live PostgreSQL execution is claimed and no database was touched. The production build was not rerun for round 2: the scoped changes are a pure arithmetic precision bound and integration-test-only support/setup, with no entrypoint, dependency, schema, route, build configuration, or bundler-graph change. Fresh full tests and TypeScript checking compiled the affected application module. The successful elevated production build from round 1 remains recorded above and is not represented as fresh round-2 build evidence.
+
+Round-2 files: `shared/budgeting.ts`, `shared/budgeting.test.ts`, `server/db/integration-cleanup.ts`, `server/db/integration-cleanup.test.ts`, `server/db/integration.test.ts`, and this appended report section.
+
+The exact round-2 commit SHA is reported in the post-commit handoff for the same content-addressing reason noted above.
