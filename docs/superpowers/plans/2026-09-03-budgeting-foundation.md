@@ -267,8 +267,8 @@ git commit -m "feat: add budgeting database schema"
 - Modify: `shared/contracts.ts`
 
 **Interfaces:**
-- Produces: `BudgetStore.getBudget(month)`, `BudgetStore.upsertBudget(month, input)`, income CRUD, `createBudgetRouter(store, timezone)`, `GET/PUT /api/budgets/:month`, and CRUD `/api/income`.
-- Consumes: `MonthlyBudget`, `IncomeRecord`, `upsertBudgetSchema`, `createIncomeSchema`, and `localDateBounds`.
+- Produces: `BudgetStore.getBudget(month)`, `BudgetStore.upsertBudget(month, input)`, income CRUD including `updateIncome`, `createBudgetRouter(store, timezone)`, `GET/PUT /api/budgets/:month`, and CRUD `/api/income` with `PUT /api/income/:id`.
+- Consumes: `MonthlyBudget`, `IncomeRecord`, `upsertBudgetSchema`, `createIncomeSchema`, `updateIncomeSchema`, and `localDateBounds`.
 
 - [ ] **Step 1: Write failing route tests for saved, suggested, and income behavior**
 
@@ -311,13 +311,14 @@ export interface BudgetStore {
   createIncome(input: CreateIncomeInput): Promise<IncomeRecord>;
   listIncome(filters: ListFilters): Promise<IncomeRecord[]>;
   getIncome(id: string): Promise<IncomeRecord | undefined>;
+  updateIncome(id: string, input: UpdateIncomeInput): Promise<IncomeRecord | undefined>;
   deleteIncome(id: string): Promise<boolean>;
 }
 ```
 
 `getBudget` first looks for the requested month. If absent, it selects the latest earlier row and returns its three plan values with `month` changed and `source: 'suggested'`; if no earlier row exists, it returns zero values. `upsertBudget` uses PostgreSQL `ON CONFLICT (month) DO UPDATE` and returns `source: 'saved'`.
 
-Mount budgets before `/:id` income routes. Parse UUIDs with the same error style as records. Return 404 code `INCOME_NOT_FOUND` for missing income.
+Mount budgets before `/:id` income routes. Parse UUIDs with the same error style as records. `PUT /api/income/:id` replaces source, category, and amount and may correct `createdAt`; create requests retain server time. Return 404 code `INCOME_NOT_FOUND` for missing income.
 
 - [ ] **Step 4: Implement Drizzle mapping and the router**
 
@@ -346,7 +347,7 @@ git commit -m "feat: add monthly budget and income APIs"
 - Modify: `shared/contracts.ts`
 
 **Interfaces:**
-- Produces: `Vault`, `VaultContribution`, `VaultStore`, CRUD `/api/vaults`, `POST /api/vaults/:id/contributions`, and `POST /api/vaults/:id/archive`.
+- Produces: `Vault`, `VaultContribution`, `VaultStore`, CRUD `/api/vaults` including `PUT /api/vaults/:id`, `POST /api/vaults/:id/contributions`, and `POST /api/vaults/:id/archive`.
 - Consumes: positive money validation and optional `YYYY-MM-DD` target dates.
 
 - [ ] **Step 1: Write failing tests for progress, contribution, and archive rules**
@@ -390,7 +391,7 @@ export const createVaultSchema = z.object({
 });
 export const createVaultContributionSchema = z.object({ amount: moneySchema });
 export interface Vault {
-  id: string; name: string; emoji: string; targetAmount: string; targetDate?: string;
+  id: string; name: string; emoji: string; isGeneral: boolean; targetAmount: string; targetDate?: string;
   status: 'active' | 'archived'; savedAmount: string; progressPercent: string;
   createdAt: string; updatedAt: string;
 }
@@ -398,14 +399,15 @@ export interface VaultContribution {
   id: string; vaultId: string; amount: string; createdAt: string;
 }
 export type CreateVaultInput = z.infer<typeof createVaultSchema>;
+export type UpdateVaultInput = z.infer<typeof updateVaultSchema>;
 export type CreateVaultContributionInput = z.infer<typeof createVaultContributionSchema>;
 ```
 
 - [ ] **Step 4: Implement the store and router**
 
-List Vaults with a left join and `COALESCE(sum(vault_contributions.amount), 0)`. Calculate percentage with Decimal.js and do not clamp progress, so overfunded goals can show more than 100%. Create General Savings lazily with name `General Savings`, emoji `💰`, and target amount `1.00`; the UI treats this target as open-ended and hides its progress bar.
+List Vaults with a left join and return `COALESCE(sum(vault_contributions.amount), 0)` as text without narrowing the aggregate back to `NUMERIC(20,2)`. Calculate percentage with scoped, operand-sized Decimal.js precision and do not clamp progress, so overfunded goals can show more than 100%. Create General Savings lazily with name `General Savings`, emoji `💰`, and target amount `1.00`; expose it as `isGeneral: true`. Concurrent lazy creation also repairs only its canonical name, emoji, and active status while preserving any target amount/date. The UI treats this target as open-ended and hides its progress bar.
 
-Use one atomic PostgreSQL statement with `target` and `inserted` CTEs: select the Vault status, insert the contribution only when that status is `active`, and return both the target status and inserted row. If no target row exists, return `VAULT_NOT_FOUND`; if the target is archived, return `VAULT_ARCHIVED`. This avoids the interactive `database.transaction()` API, which the configured Neon HTTP driver explicitly does not support. Return `VAULT_HAS_CONTRIBUTIONS` when hard deletion finds existing contributions.
+Use one atomic PostgreSQL statement with `target` and `inserted` CTEs: select the Vault status, insert the contribution only when that status is `active`, and return both the target status and inserted row. If no target row exists, return `VAULT_NOT_FOUND`; if the target is archived, return `VAULT_ARCHIVED`. This avoids the interactive `database.transaction()` API, which the configured Neon HTTP driver explicitly does not support. Return `VAULT_HAS_CONTRIBUTIONS` when hard deletion finds existing contributions. General Savings accepts target/date updates only when the canonical name and emoji remain unchanged; rename, archive, and delete attempts return stable `GENERAL_VAULT_PROTECTED` conflicts.
 
 - [ ] **Step 5: Run Vault tests**
 
@@ -551,7 +553,7 @@ Instantiate `DrizzleBudgetStore`, `DrizzleVaultStore`, and `DrizzleNetWorthStore
 
 - [ ] **Step 5: Extend the database integration test and run non-database verification**
 
-The integration test creates one uniquely named budget, income, Vault and contribution, asset, and liability; verifies fixed decimals and aggregate results; then deletes only created rows in `finally`. It must continue throwing the existing clear error when `TEST_DATABASE_URL` is absent.
+The integration suite requires `TEST_DATABASE_URL` plus the explicit `TEST_DATABASE_DISPOSABLE=true` acknowledgement before applying migrations. It applies the production migrations, exercises an isolated legacy-schema category backfill, constraints, carry-forward and update paths, canonical repair/protection, real concurrent Vault operations, and aggregates above a single `NUMERIC(20,2)` component. Every test uses unique data and removes only its own rows/schemas in `finally`. It must continue throwing a clear error when either safety prerequisite is absent.
 
 Run: `npm.cmd test`
 

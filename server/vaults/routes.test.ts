@@ -8,8 +8,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createVaultContributionSchema,
   createVaultSchema,
+  updateVaultSchema,
   type CreateVaultContributionInput,
   type CreateVaultInput,
+  type UpdateVaultInput,
   type Vault,
   type VaultContribution,
 } from '../../shared/contracts';
@@ -19,7 +21,13 @@ import type { AppConfig } from '../config';
 import type { AppDatabase } from '../db/client';
 import { calculateProgressPercent, DrizzleVaultStore } from './drizzle-vault-store';
 import { createVaultRouter } from './routes';
-import type { ContributionResult, DeleteVaultResult, VaultStore } from './store';
+import type {
+  ArchiveVaultResult,
+  ContributionResult,
+  DeleteVaultResult,
+  UpdateVaultResult,
+  VaultStore,
+} from './store';
 
 class MemorySessionStore implements SessionStore {
   private readonly sessions = new Map<string, Date>();
@@ -56,6 +64,7 @@ class MemoryVaultStore implements VaultStore {
         id: canonicalId,
         name: 'General Savings',
         emoji: '💰',
+        isGeneral: true,
         targetAmount: '1.00',
         status: 'active',
         savedAmount: '0.00',
@@ -72,6 +81,7 @@ class MemoryVaultStore implements VaultStore {
     const vault: Vault = {
       id: this.id(),
       ...input,
+      isGeneral: false,
       status: 'active',
       savedAmount: '0.00',
       progressPercent: '0.00',
@@ -85,6 +95,22 @@ class MemoryVaultStore implements VaultStore {
   async getVault(id: string): Promise<Vault | undefined> {
     const vault = this.vaults.get(id);
     return vault ? this.withProgress(vault) : undefined;
+  }
+
+  async updateVault(id: string, input: UpdateVaultInput): Promise<UpdateVaultResult> {
+    const vault = this.vaults.get(id);
+    if (!vault) return { outcome: 'not_found' };
+    if (vault.isGeneral && (input.name !== 'General Savings' || input.emoji !== '💰')) {
+      return { outcome: 'general_protected' };
+    }
+    const { targetDate: _oldTargetDate, ...withoutTargetDate } = vault;
+    const updated: Vault = {
+      ...withoutTargetDate,
+      ...input,
+      updatedAt: '2026-09-03T09:30:00.000Z',
+    };
+    this.vaults.set(id, updated);
+    return { outcome: 'updated', vault: this.withProgress(updated) };
   }
 
   async createContribution(
@@ -105,20 +131,22 @@ class MemoryVaultStore implements VaultStore {
     return { outcome: 'created', contribution };
   }
 
-  async archiveVault(id: string): Promise<Vault | undefined> {
+  async archiveVault(id: string): Promise<ArchiveVaultResult> {
     const vault = this.vaults.get(id);
-    if (!vault) return undefined;
+    if (!vault) return { outcome: 'not_found' };
+    if (vault.isGeneral) return { outcome: 'general_protected' };
     const archived: Vault = {
       ...vault,
       status: 'archived',
       updatedAt: '2026-09-03T10:00:00.000Z',
     };
     this.vaults.set(id, archived);
-    return this.withProgress(archived);
+    return { outcome: 'archived', vault: this.withProgress(archived) };
   }
 
-  async deleteVault(id: string): Promise<DeleteVaultResult> {
+  async deleteVault(id: string): Promise<DeleteVaultResult | 'general_protected'> {
     if (!this.vaults.has(id)) return 'not_found';
+    if (this.vaults.get(id)?.isGeneral) return 'general_protected';
     if ((this.contributions.get(id) ?? []).length > 0) return 'has_contributions';
     this.vaults.delete(id);
     return 'deleted';
@@ -150,6 +178,12 @@ describe('Vault contracts', () => {
       targetDate: '2027-01-15',
     });
     expect(createVaultContributionSchema.parse({ amount: '25' })).toEqual({ amount: '25.00' });
+    expect(updateVaultSchema.parse({
+      name: ' Trip ', emoji: ' ✈️ ', targetAmount: '90000', targetDate: '2027-04-01',
+      status: 'archived', isGeneral: true,
+    })).toEqual({
+      name: 'Trip', emoji: '✈️', targetAmount: '90000.00', targetDate: '2027-04-01',
+    });
   });
 
   it.each([
@@ -168,23 +202,43 @@ describe('Drizzle Vault concurrency guards', () => {
   const canonicalId = '00000000-0000-4000-8000-000000000001';
   const now = new Date('2026-09-03T08:00:00.000Z');
 
-  it('keeps one fixed canonical General Savings Vault despite a user-name collision', async () => {
-    const rows = [{
-      id: '00000000-0000-4000-8000-000000000002',
-      name: 'General Savings',
-      emoji: '🏦',
-      targetAmount: '500.00',
-      targetDate: null,
-      status: 'active',
-      savedAmount: '0.00',
-      createdAt: now,
-      updatedAt: now,
-    }];
+  it('repairs one canonical General Savings identity concurrently without overwriting its target', async () => {
+    const rows = [
+      {
+        id: '00000000-0000-4000-8000-000000000002',
+        name: 'General Savings',
+        emoji: '🏦',
+        targetAmount: '500.00',
+        targetDate: null,
+        status: 'active',
+        savedAmount: '0.00',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: canonicalId,
+        name: 'Renamed by an older client',
+        emoji: '❌',
+        targetAmount: '777.99',
+        targetDate: '2030-06-01',
+        status: 'archived',
+        savedAmount: '0.00',
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+    const repairedFields: string[][] = [];
     const database = {
       insert: () => ({
         values: (value: { id: string; name: string; emoji: string; targetAmount: string }) => ({
-          onConflictDoNothing: async () => {
-            if (!rows.some((row) => row.id === value.id)) {
+          onConflictDoUpdate: async (configuration: { set: Record<string, unknown> }) => {
+            repairedFields.push(Object.keys(configuration.set).sort());
+            const existing = rows.find((row) => row.id === value.id);
+            if (existing) {
+              existing.name = value.name;
+              existing.emoji = value.emoji;
+              existing.status = 'active';
+            } else {
               rows.push({
                 ...value,
                 targetDate: null,
@@ -212,12 +266,155 @@ describe('Drizzle Vault concurrency guards', () => {
     const lists = await Promise.all([store.listVaults(), store.listVaults()]);
 
     for (const list of lists) {
-      expect(list.map((vault) => [vault.id, vault.emoji, vault.targetAmount])).toEqual([
-        ['00000000-0000-4000-8000-000000000002', '🏦', '500.00'],
-        [canonicalId, '💰', '1.00'],
+      expect(list.map((vault) => [
+        vault.id,
+        vault.name,
+        vault.emoji,
+        vault.status,
+        vault.targetAmount,
+        vault.targetDate,
+        vault.isGeneral,
+      ])).toEqual([
+        ['00000000-0000-4000-8000-000000000002', 'General Savings', '🏦', 'active', '500.00', undefined, false],
+        [canonicalId, 'General Savings', '💰', 'active', '777.99', '2030-06-01', true],
       ]);
     }
     expect(rows.filter((row) => row.id === canonicalId)).toHaveLength(1);
+    expect(repairedFields).toEqual([
+      ['emoji', 'name', 'status', 'updatedAt'],
+      ['emoji', 'name', 'status', 'updatedAt'],
+    ]);
+  });
+
+  it('returns aggregate savings as text and preserves maximum-value progress exactly', async () => {
+    const aggregateOfTwoMaximumContributions = '1999999999999999999.98';
+    let emittedAggregateSql = '';
+    const row = {
+      id: '00000000-0000-4000-8000-000000000099',
+      name: 'Precision Vault',
+      emoji: '🎯',
+      targetAmount: '0.01',
+      targetDate: null,
+      status: 'active',
+      savedAmount: aggregateOfTwoMaximumContributions,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const database = {
+      select: (selection: Record<string, unknown>) => {
+        emittedAggregateSql = new PgDialect()
+          .sqlToQuery(selection.savedAmount as SQL)
+          .sql
+          .toLowerCase();
+        if (/::numeric\(20,\s*2\)/.test(emittedAggregateSql)) {
+          throw Object.assign(new Error('numeric field overflow'), { code: '22003' });
+        }
+        const query = {
+          from: () => query,
+          leftJoin: () => query,
+          groupBy: () => query,
+          where: () => query,
+          limit: async () => [row],
+        };
+        return query;
+      },
+    } as unknown as AppDatabase;
+
+    const result = await new DrizzleVaultStore(database).getVault(row.id);
+
+    expect(emittedAggregateSql).toContain('::text');
+    expect(result).toEqual({
+      ...row,
+      isGeneral: false,
+      targetDate: undefined,
+      savedAmount: aggregateOfTwoMaximumContributions,
+      progressPercent: '19999999999999999999800.00',
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+  });
+
+  it('uses scoped precision for a maximum aggregate against the smallest valid target', () => {
+    expect(calculateProgressPercent('1999999999999999999.98', '0.01'))
+      .toBe('19999999999999999999800.00');
+  });
+
+  it('updates user Vault fields through Drizzle and clears an omitted target date', async () => {
+    const id = '00000000-0000-4000-8000-000000000099';
+    const captured: Record<string, unknown>[] = [];
+    const row = {
+      id,
+      name: 'Updated goal',
+      emoji: '🎯',
+      targetAmount: '125.50',
+      targetDate: null,
+      status: 'active',
+      savedAmount: '25.10',
+      createdAt: now,
+      updatedAt: now,
+    };
+    const database = {
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          captured.push(values);
+          return { where: () => ({ returning: async () => [{ id }] }) };
+        },
+      }),
+      select: () => {
+        const query = {
+          from: () => query,
+          leftJoin: () => query,
+          groupBy: () => query,
+          where: () => query,
+          limit: async () => [row],
+        };
+        return query;
+      },
+    } as unknown as AppDatabase;
+
+    const result = await new DrizzleVaultStore(database).updateVault(id, {
+      name: row.name,
+      emoji: row.emoji,
+      targetAmount: row.targetAmount,
+    });
+
+    expect(captured).toEqual([expect.objectContaining({
+      name: 'Updated goal',
+      emoji: '🎯',
+      targetAmount: '125.50',
+      targetDate: null,
+      updatedAt: expect.anything(),
+    })]);
+    expect(captured[0]).not.toHaveProperty('status');
+    expect(result).toEqual({
+      outcome: 'updated',
+      vault: {
+        ...row,
+        isGeneral: false,
+        targetDate: undefined,
+        progressPercent: '20.00',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+    });
+  });
+
+  it('protects the canonical Vault in production storage before issuing writes', async () => {
+    const database = {
+      execute: vi.fn(),
+      update: vi.fn(),
+    } as unknown as AppDatabase;
+    const store = new DrizzleVaultStore(database);
+
+    await expect(store.archiveVault(canonicalId)).resolves.toEqual({
+      outcome: 'general_protected',
+    });
+    await expect(store.deleteVault(canonicalId)).resolves.toBe('general_protected');
+    await expect(store.updateVault(canonicalId, {
+      name: 'Renamed', emoji: '❌', targetAmount: '10.00',
+    })).resolves.toEqual({ outcome: 'general_protected' });
+    expect(database.update).not.toHaveBeenCalled();
+    expect(database.execute).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -323,6 +520,7 @@ describe('Vault APIs', () => {
       expect.objectContaining({
         name: 'General Savings',
         emoji: '💰',
+        isGeneral: true,
         targetAmount: '1.00',
         savedAmount: '0.00',
         progressPercent: '0.00',
@@ -393,6 +591,86 @@ describe('Vault APIs', () => {
     });
   });
 
+  it('updates every mutable field on a user Vault and can clear its target date', async () => {
+    const created = await agent.post('/api/vaults').send({
+      name: 'Trip', emoji: '✈️', targetAmount: '50000', targetDate: '2027-01-15',
+    }).expect(201);
+    expect(created.body.data.isGeneral).toBe(false);
+
+    const updated = await agent.put(`/api/vaults/${created.body.data.id}`).send({
+      name: ' New phone ', emoji: ' 📱 ', targetAmount: '80000',
+      id: 'client-controlled', status: 'archived', isGeneral: true,
+    }).expect(200);
+
+    expect(updated.body.data).toEqual({
+      ...created.body.data,
+      name: 'New phone',
+      emoji: '📱',
+      targetAmount: '80000.00',
+      targetDate: undefined,
+      isGeneral: false,
+      updatedAt: '2026-09-03T09:30:00.000Z',
+    });
+    expect(updated.body.data).not.toHaveProperty('targetDate');
+  });
+
+  it('never archives, deletes, or renames General Savings and keeps contributions usable', async () => {
+    const listed = await agent.get('/api/vaults').expect(200);
+    const general = listed.body.data.items.find((vault: Vault) => vault.isGeneral);
+    expect(general).toEqual(expect.objectContaining({
+      name: 'General Savings', emoji: '💰', status: 'active', isGeneral: true,
+    }));
+
+    for (const response of [
+      await agent.post(`/api/vaults/${general.id}/archive`).expect(409),
+      await agent.delete(`/api/vaults/${general.id}`).expect(409),
+      await agent.put(`/api/vaults/${general.id}`).send({
+        name: 'Holiday', emoji: '🏖️', targetAmount: '500',
+      }).expect(409),
+    ]) {
+      expect(response.body).toEqual({
+        success: false,
+        error: {
+          code: 'GENERAL_VAULT_PROTECTED',
+          message: 'General Savings cannot be renamed, archived, or deleted',
+        },
+      });
+    }
+
+    const contribution = await agent
+      .post(`/api/vaults/${general.id}/contributions`)
+      .send({ amount: '25' })
+      .expect(201);
+    expect(contribution.body.data).toEqual(expect.objectContaining({
+      vaultId: general.id, amount: '25.00',
+    }));
+
+    const unchanged = await agent.get(`/api/vaults/${general.id}`).expect(200);
+    expect(unchanged.body.data).toEqual(expect.objectContaining({
+      name: 'General Savings', emoji: '💰', status: 'active', isGeneral: true,
+      savedAmount: '25.00',
+    }));
+  });
+
+  it('allows General Savings target changes only when its identity fields stay canonical', async () => {
+    const listed = await agent.get('/api/vaults').expect(200);
+    const general = listed.body.data.items.find((vault: Vault) => vault.isGeneral);
+
+    const response = await agent.put(`/api/vaults/${general.id}`).send({
+      name: 'General Savings', emoji: '💰', targetAmount: '2500', targetDate: '2028-01-01',
+    }).expect(200);
+
+    expect(response.body.data).toEqual(expect.objectContaining({
+      id: general.id,
+      name: 'General Savings',
+      emoji: '💰',
+      targetAmount: '2500.00',
+      targetDate: '2028-01-01',
+      status: 'active',
+      isGeneral: true,
+    }));
+  });
+
   it.each([
     { body: { name: '', emoji: '📱', targetAmount: '1' } },
     { body: { name: 'n'.repeat(81), emoji: '📱', targetAmount: '1' } },
@@ -418,12 +696,36 @@ describe('Vault APIs', () => {
     const missingId = '00000000-0000-4000-8000-000000000099';
     for (const response of [
       await agent.get(`/api/vaults/${missingId}`).expect(404),
+      await agent.put(`/api/vaults/${missingId}`).send({
+        name: 'Missing', emoji: '❓', targetAmount: '1',
+      }).expect(404),
       await agent.delete(`/api/vaults/${missingId}`).expect(404),
       await agent.post(`/api/vaults/${missingId}/archive`).expect(404),
       await agent.post(`/api/vaults/${missingId}/contributions`).send({ amount: '1' }).expect(404),
     ]) {
       expect(response.body.error.code).toBe('VAULT_NOT_FOUND');
     }
+  });
+
+  it('validates and sanitizes Vault update failures', async () => {
+    const created = await store.createVault({ name: 'Trip', emoji: '✈️', targetAmount: '1.00' });
+    const invalid = await agent.put(`/api/vaults/${created.id}`).send({
+      name: 'Trip', emoji: '✈️', targetAmount: '0',
+    }).expect(400);
+    expect(invalid.body.error.code).toBe('VALIDATION_ERROR');
+
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    store.updateVault = async () => {
+      throw new Error('private Vault storage details');
+    };
+    const failed = await agent.put(`/api/vaults/${created.id}`).send({
+      name: 'Trip', emoji: '✈️', targetAmount: '10',
+    }).expect(500);
+    expect(failed.body).toEqual({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
+    });
+    expect(JSON.stringify(failed.body)).not.toContain('private Vault');
   });
 
   it('rejects contributions to an archived Vault', async () => {

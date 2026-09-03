@@ -1,15 +1,22 @@
 import Decimal from 'decimal.js';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, ne, or, sql } from 'drizzle-orm';
 
 import type {
   CreateVaultContributionInput,
   CreateVaultInput,
+  UpdateVaultInput,
   Vault,
   VaultContribution,
 } from '../../shared/contracts';
 import type { AppDatabase } from '../db/client';
 import { vaultContributions, vaults } from '../db/schema';
-import type { ContributionResult, DeleteVaultResult, VaultStore } from './store';
+import type {
+  ArchiveVaultResult,
+  ContributionResult,
+  DeleteVaultResult,
+  UpdateVaultResult,
+  VaultStore,
+} from './store';
 
 interface VaultAggregateRow {
   id: string;
@@ -38,6 +45,8 @@ interface DeleteStatementRow {
 }
 
 const GENERAL_SAVINGS_VAULT_ID = '00000000-0000-4000-8000-000000000001';
+const GENERAL_SAVINGS_NAME = 'General Savings';
+const GENERAL_SAVINGS_EMOJI = '💰';
 
 function isForeignKeyViolation(error: unknown): error is { code: '23503' } {
   return typeof error === 'object'
@@ -47,7 +56,15 @@ function isForeignKeyViolation(error: unknown): error is { code: '23503' } {
 }
 
 export function calculateProgressPercent(savedAmount: string, targetAmount: string): string {
-  return new Decimal(savedAmount).div(targetAmount).mul(100).toFixed(2);
+  const widestOperand = Math.max(1, ...[savedAmount, targetAmount].map((value) => {
+    const significantDigits = value
+      .replace(/^[+-]/, '')
+      .replace('.', '')
+      .replace(/^0+/, '');
+    return significantDigits.length;
+  }));
+  const MoneyDecimal = Decimal.clone({ precision: widestOperand + 4 });
+  return new MoneyDecimal(savedAmount).div(targetAmount).mul(100).toFixed(2);
 }
 
 function vaultResult(row: VaultAggregateRow): Vault {
@@ -55,6 +72,7 @@ function vaultResult(row: VaultAggregateRow): Vault {
     id: row.id,
     name: row.name,
     emoji: row.emoji,
+    isGeneral: row.id === GENERAL_SAVINGS_VAULT_ID,
     targetAmount: String(row.targetAmount),
     ...(row.targetDate ? { targetDate: row.targetDate } : {}),
     status: row.status as Vault['status'],
@@ -81,7 +99,7 @@ export class DrizzleVaultStore implements VaultStore {
         targetAmount: vaults.targetAmount,
         targetDate: vaults.targetDate,
         status: vaults.status,
-        savedAmount: sql<string>`coalesce(sum(${vaultContributions.amount}), 0)::numeric(20, 2)`,
+        savedAmount: sql<string>`coalesce(sum(${vaultContributions.amount}), 0)::text`,
         createdAt: vaults.createdAt,
         updatedAt: vaults.updatedAt,
       })
@@ -104,11 +122,24 @@ export class DrizzleVaultStore implements VaultStore {
       .insert(vaults)
       .values({
         id: GENERAL_SAVINGS_VAULT_ID,
-        name: 'General Savings',
-        emoji: '💰',
+        name: GENERAL_SAVINGS_NAME,
+        emoji: GENERAL_SAVINGS_EMOJI,
         targetAmount: '1.00',
       })
-      .onConflictDoNothing({ target: vaults.id });
+      .onConflictDoUpdate({
+        target: vaults.id,
+        set: {
+          name: GENERAL_SAVINGS_NAME,
+          emoji: GENERAL_SAVINGS_EMOJI,
+          status: 'active',
+          updatedAt: sql`now()`,
+        },
+        setWhere: or(
+          ne(vaults.name, GENERAL_SAVINGS_NAME),
+          ne(vaults.emoji, GENERAL_SAVINGS_EMOJI),
+          ne(vaults.status, 'active'),
+        ),
+      });
     const rows = await this.aggregateQuery().orderBy(asc(vaults.createdAt), asc(vaults.id));
     return rows.map(vaultResult);
   }
@@ -121,6 +152,28 @@ export class DrizzleVaultStore implements VaultStore {
   async getVault(id: string): Promise<Vault | undefined> {
     const [row] = await this.aggregateQuery().where(eq(vaults.id, id)).limit(1);
     return row ? vaultResult(row) : undefined;
+  }
+
+  async updateVault(id: string, input: UpdateVaultInput): Promise<UpdateVaultResult> {
+    if (
+      id === GENERAL_SAVINGS_VAULT_ID
+      && (input.name !== GENERAL_SAVINGS_NAME || input.emoji !== GENERAL_SAVINGS_EMOJI)
+    ) {
+      return { outcome: 'general_protected' };
+    }
+    const rows = await this.database
+      .update(vaults)
+      .set({
+        ...input,
+        targetDate: input.targetDate ?? null,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(vaults.id, id))
+      .returning({ id: vaults.id });
+    if (rows.length === 0) return { outcome: 'not_found' };
+    const vault = await this.getVault(id);
+    if (!vault) throw new Error('Updated Vault could not be read');
+    return { outcome: 'updated', vault };
   }
 
   async createContribution(
@@ -171,16 +224,21 @@ export class DrizzleVaultStore implements VaultStore {
     return { outcome: 'created', contribution };
   }
 
-  async archiveVault(id: string): Promise<Vault | undefined> {
+  async archiveVault(id: string): Promise<ArchiveVaultResult> {
+    if (id === GENERAL_SAVINGS_VAULT_ID) return { outcome: 'general_protected' };
     const rows = await this.database
       .update(vaults)
       .set({ status: 'archived', updatedAt: sql`now()` })
       .where(eq(vaults.id, id))
       .returning({ id: vaults.id });
-    return rows.length > 0 ? this.getVault(id) : undefined;
+    if (rows.length === 0) return { outcome: 'not_found' };
+    const vault = await this.getVault(id);
+    if (!vault) throw new Error('Archived Vault could not be read');
+    return { outcome: 'archived', vault };
   }
 
-  async deleteVault(id: string): Promise<DeleteVaultResult> {
+  async deleteVault(id: string): Promise<DeleteVaultResult | 'general_protected'> {
+    if (id === GENERAL_SAVINGS_VAULT_ID) return 'general_protected';
     try {
       const result = await this.database.execute<DeleteStatementRow>(sql`
         delete from ${vaults}

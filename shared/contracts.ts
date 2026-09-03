@@ -57,6 +57,11 @@ export const planMoneySchema = z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/)
   .transform(normalizeMoney).refine((value) => value.split('.')[0].length <= 18, 'Amount is too large');
 export const upsertBudgetSchema = z.object({ salary: planMoneySchema, spendingLimit: planMoneySchema, savingsTarget: planMoneySchema });
 export const createIncomeSchema = z.object({ source: descriptionSchema, category: incomeCategorySchema, amount: moneySchema });
+export const updateIncomeSchema = createIncomeSchema.extend({
+  createdAt: z.iso.datetime({ offset: true })
+    .transform((value) => new Date(value).toISOString())
+    .optional(),
+});
 
 export const createPersonRecordSchema = z.object({
   personName: personNameSchema,
@@ -102,6 +107,7 @@ export const createVaultSchema = z.object({
   targetAmount: moneySchema,
   targetDate: vaultTargetDateSchema.optional(),
 });
+export const updateVaultSchema = createVaultSchema;
 
 export const createVaultContributionSchema = z.object({ amount: moneySchema });
 
@@ -161,7 +167,9 @@ export type SpendingCategory = z.infer<typeof spendingCategorySchema>;
 export type IncomeCategory = z.infer<typeof incomeCategorySchema>;
 export type UpsertBudgetInput = z.infer<typeof upsertBudgetSchema>;
 export type CreateIncomeInput = z.infer<typeof createIncomeSchema>;
+export type UpdateIncomeInput = z.infer<typeof updateIncomeSchema>;
 export type CreateVaultInput = z.infer<typeof createVaultSchema>;
+export type UpdateVaultInput = z.infer<typeof updateVaultSchema>;
 export type CreateVaultContributionInput = z.infer<typeof createVaultContributionSchema>;
 export type AssetType = z.infer<typeof assetTypeSchema>;
 export type LiabilityType = z.infer<typeof liabilityTypeSchema>;
@@ -199,6 +207,7 @@ export interface Vault {
   id: string;
   name: string;
   emoji: string;
+  isGeneral: boolean;
   targetAmount: string;
   targetDate?: string;
   status: 'active' | 'archived';

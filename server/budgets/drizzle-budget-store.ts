@@ -5,6 +5,7 @@ import type {
   IncomeCategory,
   IncomeRecord,
   MonthlyBudget,
+  UpdateIncomeInput,
   UpsertBudgetInput,
 } from '../../shared/contracts';
 import type { AppDatabase } from '../db/client';
@@ -96,6 +97,19 @@ export class DrizzleBudgetStore implements BudgetStore {
 
   async getIncome(id: string): Promise<IncomeRecord | undefined> {
     const [row] = await this.database.select().from(income).where(eq(income.id, id)).limit(1);
+    return row ? incomeResult(row) : undefined;
+  }
+
+  async updateIncome(id: string, input: UpdateIncomeInput): Promise<IncomeRecord | undefined> {
+    const { createdAt, ...values } = input;
+    const [row] = await this.database
+      .update(income)
+      .set({
+        ...values,
+        ...(createdAt ? { createdAt: new Date(createdAt) } : {}),
+      })
+      .where(eq(income.id, id))
+      .returning();
     return row ? incomeResult(row) : undefined;
   }
 

@@ -10,6 +10,14 @@ function itemLabel(item: HistoryItem): string {
   return item.personName;
 }
 
+function itemCategory(item: HistoryItem): string | undefined {
+  if (item.type !== 'transaction' && item.type !== 'income') return undefined;
+  return item.category
+    .split('-')
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(' ');
+}
+
 const icons = {
   transaction: ReceiptText,
   lent: ArrowUpRight,
@@ -81,10 +89,11 @@ export function HistoryPage() {
         <section className="history-list" aria-label="Financial history">
           {items.map((item) => {
             const Icon = icons[item.type];
+            const category = itemCategory(item);
             return (
               <article className={`history-item ${item.type}`} key={`${item.type}-${item.id}`}>
                 <span className="history-icon"><Icon aria-hidden="true" /></span>
-                <div><strong>{itemLabel(item)}</strong><span>{typeLabels[item.type]} · {new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(item.createdAt))}</span></div>
+                <div><strong>{itemLabel(item)}</strong><span>{typeLabels[item.type]} · {category ? `${category} · ` : ''}{new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(item.createdAt))}</span></div>
                 <b>{item.amount}</b>
                 <button type="button" className="icon-button subtle" aria-label={`Delete ${itemLabel(item)}`} onClick={() => void remove(item)}><Trash2 aria-hidden="true" /></button>
               </article>

@@ -1,16 +1,19 @@
 import { Router } from 'express';
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   CreateIncomeInput,
   IncomeRecord,
   MonthlyBudget,
+  UpdateIncomeInput,
   UpsertBudgetInput,
 } from '../../shared/contracts';
 import { createApp } from '../app';
 import type { SessionStore } from '../auth/session-store';
 import type { AppConfig } from '../config';
+import type { AppDatabase } from '../db/client';
+import { DrizzleBudgetStore } from './drizzle-budget-store';
 import { createBudgetRouter } from './routes';
 import type { BudgetStore, ListFilters } from './store';
 
@@ -72,6 +75,18 @@ class MemoryBudgetStore implements BudgetStore {
 
   async getIncome(id: string): Promise<IncomeRecord | undefined> {
     return this.income.get(id);
+  }
+
+  async updateIncome(id: string, input: UpdateIncomeInput): Promise<IncomeRecord | undefined> {
+    const existing = this.income.get(id);
+    if (!existing) return undefined;
+    const item = {
+      ...existing,
+      ...input,
+      createdAt: input.createdAt ?? existing.createdAt,
+    };
+    this.income.set(id, item);
+    return item;
   }
 
   async deleteIncome(id: string): Promise<boolean> {
@@ -220,6 +235,64 @@ describe('monthly budget and income APIs', () => {
     expect(response.body).toEqual({ success: true, data: created.body.data });
   });
 
+  it('corrects an Income source, category, amount, and timestamp', async () => {
+    const created = await agent.post('/api/income').send({
+      source: 'Bonus', category: 'bonus', amount: '100',
+    }).expect(201);
+
+    const response = await agent.put(`/api/income/${created.body.data.id}`).send({
+      source: ' Corrected freelance ',
+      category: 'freelance',
+      amount: '125.5',
+      createdAt: '2026-08-31T23:30:00-04:00',
+      id: 'client-controlled',
+    }).expect(200);
+
+    expect(response.body).toEqual({
+      success: true,
+      data: {
+        ...created.body.data,
+        source: 'Corrected freelance',
+        category: 'freelance',
+        amount: '125.50',
+        createdAt: '2026-09-01T03:30:00.000Z',
+      },
+    });
+  });
+
+  it('validates Income updates and returns a stable missing-record error', async () => {
+    const missingId = '00000000-0000-4000-8000-000000000099';
+    const invalid = await agent.put(`/api/income/${missingId}`).send({
+      source: 'Bonus', category: 'bonus', amount: '1', createdAt: 'yesterday',
+    }).expect(400);
+    expect(invalid.body.error.code).toBe('VALIDATION_ERROR');
+
+    const missing = await agent.put(`/api/income/${missingId}`).send({
+      source: 'Bonus', category: 'bonus', amount: '1',
+    }).expect(404);
+    expect(missing.body).toEqual({
+      success: false,
+      error: { code: 'INCOME_NOT_FOUND', message: 'Income record not found' },
+    });
+  });
+
+  it('sanitizes unexpected Income update storage failures', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    store.updateIncome = async () => {
+      throw new Error('private database connection details');
+    };
+
+    const response = await agent.put('/api/income/00000000-0000-4000-8000-000000000099').send({
+      source: 'Bonus', category: 'bonus', amount: '1',
+    }).expect(500);
+
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
+    });
+    expect(JSON.stringify(response.body)).not.toContain('private database');
+  });
+
   it('returns INCOME_NOT_FOUND when deleting a missing income record', async () => {
     const response = await agent
       .delete('/api/income/00000000-0000-4000-8000-000000000099')
@@ -236,5 +309,41 @@ describe('monthly budget and income APIs', () => {
 
     expect(response.body.success).toBe(false);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('DrizzleBudgetStore Income updates', () => {
+  it('writes a corrected timestamp as a Date and maps the returned row', async () => {
+    const captured: Record<string, unknown>[] = [];
+    const row = {
+      id: '00000000-0000-4000-8000-000000000009',
+      source: 'Corrected source',
+      category: 'refund',
+      amount: '15.50',
+      createdAt: new Date('2026-09-01T03:30:00.000Z'),
+    };
+    const database = {
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          captured.push(values);
+          return { where: () => ({ returning: async () => [row] }) };
+        },
+      }),
+    } as unknown as AppDatabase;
+
+    const result = await new DrizzleBudgetStore(database).updateIncome(row.id, {
+      source: row.source,
+      category: 'refund',
+      amount: row.amount,
+      createdAt: '2026-09-01T03:30:00.000Z',
+    });
+
+    expect(captured).toEqual([expect.objectContaining({
+      source: 'Corrected source',
+      category: 'refund',
+      amount: '15.50',
+      createdAt: new Date('2026-09-01T03:30:00.000Z'),
+    })]);
+    expect(result).toEqual({ ...row, createdAt: '2026-09-01T03:30:00.000Z' });
   });
 });

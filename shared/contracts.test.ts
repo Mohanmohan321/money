@@ -5,6 +5,8 @@ import {
   createIncomeSchema,
   createTransactionSchema,
   moneySchema,
+  updateIncomeSchema,
+  updateVaultSchema,
   upsertBudgetSchema,
 } from './contracts';
 
@@ -60,5 +62,41 @@ describe('budget contracts', () => {
       .toEqual({ source: 'Bonus', category: 'bonus', amount: '1250.00' });
     expect(createTransactionSchema.parse({ description: 'Swiggy', amount: '25', category: 'food' }).category)
       .toBe('food');
+  });
+
+  it('normalizes complete Income and Vault update payloads and strips protected fields', () => {
+    expect(updateIncomeSchema.parse({
+      source: ' Corrected bonus ',
+      category: 'bonus',
+      amount: '250.5',
+      createdAt: '2026-09-01T10:15:00+05:30',
+      id: 'client-controlled',
+    })).toEqual({
+      source: 'Corrected bonus',
+      category: 'bonus',
+      amount: '250.50',
+      createdAt: '2026-09-01T04:45:00.000Z',
+    });
+
+    expect(updateVaultSchema.parse({
+      name: ' Emergency fund ',
+      emoji: ' 🛟 ',
+      targetAmount: '50000',
+      targetDate: '2027-12-31',
+      id: 'client-controlled',
+      status: 'archived',
+      isGeneral: true,
+    })).toEqual({
+      name: 'Emergency fund',
+      emoji: '🛟',
+      targetAmount: '50000.00',
+      targetDate: '2027-12-31',
+    });
+  });
+
+  it('rejects an invalid corrected Income timestamp', () => {
+    expect(() => updateIncomeSchema.parse({
+      source: 'Bonus', category: 'bonus', amount: '1', createdAt: '2026-09-01',
+    })).toThrow();
   });
 });

@@ -80,7 +80,7 @@ The report is generated from persisted records and selected year boundaries in `
 
 Each monthly budget stores that month's salary, spending limit, and savings target. When a new month has no configuration, the API returns the most recent configuration as a suggested draft; nothing is persisted until the user saves it. This preserves salary history when values change.
 
-Additional income uses a new record type with source, amount, optional category, and server-generated timestamp. Income records appear in History, recent activity, calendars, breakdowns, and reports. The Add page gains an Income mode.
+Additional income uses a new record type with source, amount, category, and server-generated timestamp. Income records appear in History, recent activity, calendars, breakdowns, and reports. The Add page gains an Income mode. A full-record update can correct the source, amount, category, and event timestamp; creation continues to ignore client timestamps.
 
 ### Spending Categories
 
@@ -98,7 +98,7 @@ The receipt image and OCR text are discarded after confirmation or cancellation.
 
 Users can create multiple Vaults such as Trip, New Phone, or Emergency Fund. A Vault has a name, emoji, target amount, optional target date, status, and timestamps. Contributions are immutable money events with a positive amount and server-generated timestamp.
 
-Each Vault card shows saved amount, target, percentage progress, target date, and Add money action. Contributions count as Savings and reduce Amount left for their month. The built-in General Savings Vault supports savings that are not tied to a named goal. Archived Vaults remain in reports; Vaults with contributions cannot be hard-deleted through the UI.
+Each Vault card shows saved amount, target, percentage progress, target date, and Add money action. Contributions count as Savings and reduce Amount left for their month. The built-in General Savings Vault supports savings that are not tied to a named goal and is identified publicly by `isGeneral`. It can receive contributions and its target amount/date can be updated, but its name, emoji, active status, and identity are canonical: it cannot be renamed, archived, or deleted. Lazy creation repairs those identity fields without replacing existing target or date settings. Archived user Vaults remain in reports; Vaults with contributions cannot be hard-deleted through the UI.
 
 ### Subscription Detector
 
@@ -142,8 +142,8 @@ The application supports one configured display currency and does not perform cu
 New authenticated endpoints are grouped by resource:
 
 - `GET/PUT /api/budgets/:month`
-- CRUD `/api/income`
-- CRUD `/api/vaults` and `POST /api/vaults/:id/contributions`
+- `POST/GET /api/income`, `GET/PUT/DELETE /api/income/:id` (`PUT` replaces source/category/amount and optionally corrects `createdAt`)
+- `POST/GET /api/vaults`, `GET/PUT/DELETE /api/vaults/:id`, `POST /api/vaults/:id/contributions`, and `POST /api/vaults/:id/archive`
 - `GET /api/subscriptions/candidates` and review-state updates
 - CRUD `/api/assets`
 - CRUD `/api/liabilities`
@@ -176,7 +176,7 @@ Each phase must keep existing authentication, records, history, dashboard, and a
 
 Unit tests cover budget arithmetic, score bounds, month carry-forward behavior, category rules, OCR-text parsing, subscription recurrence detection, calendar grouping, annual aggregation, and net-worth composition using decimal values.
 
-API tests cover authentication, validation, CRUD, additive compatibility, timezone boundaries, empty states, duplicate prevention, and sanitized errors. Database integration tests cover migrations, constraints, joins, aggregate precision, and transactional writes against the configured disposable database.
+API tests cover authentication, validation, CRUD, additive compatibility, timezone boundaries, empty states, duplicate prevention, and sanitized errors. Database integration tests are gated by both `TEST_DATABASE_URL` and `TEST_DATABASE_DISPOSABLE=true`; they apply migrations and cover backfill compatibility, constraints, joins, aggregate precision, concurrency, canonical-Vault protection, and production-store writes against only the explicitly configured disposable database.
 
 React tests cover:
 

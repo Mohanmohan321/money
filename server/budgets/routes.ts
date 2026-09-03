@@ -5,6 +5,7 @@ import {
   createIncomeSchema,
   dateFilterSchema,
   monthSchema,
+  updateIncomeSchema,
   upsertBudgetSchema,
 } from '../../shared/contracts';
 import { localDateBounds } from '../lib/time';
@@ -53,6 +54,16 @@ export function createBudgetRouter(store: BudgetStore, timezone: string): Router
   router.get('/income/:id', async (request, response) => {
     const id = idSchema.parse(request.params.id);
     const income = await store.getIncome(id);
+    if (!income) {
+      throw new AppError(404, 'INCOME_NOT_FOUND', 'Income record not found');
+    }
+    response.json({ success: true, data: income });
+  });
+
+  router.put('/income/:id', async (request, response) => {
+    const id = idSchema.parse(request.params.id);
+    const input = updateIncomeSchema.parse(request.body);
+    const income = await store.updateIncome(id, input);
     if (!income) {
       throw new AppError(404, 'INCOME_NOT_FOUND', 'Income record not found');
     }

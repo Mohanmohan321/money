@@ -2,6 +2,7 @@ import type {
   CreateIncomeInput,
   IncomeRecord,
   MonthlyBudget,
+  UpdateIncomeInput,
   UpsertBudgetInput,
 } from '../../shared/contracts';
 
@@ -16,5 +17,6 @@ export interface BudgetStore {
   createIncome(input: CreateIncomeInput): Promise<IncomeRecord>;
   listIncome(filters: ListFilters): Promise<IncomeRecord[]>;
   getIncome(id: string): Promise<IncomeRecord | undefined>;
+  updateIncome(id: string, input: UpdateIncomeInput): Promise<IncomeRecord | undefined>;
   deleteIncome(id: string): Promise<boolean>;
 }
