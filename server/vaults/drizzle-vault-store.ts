@@ -32,6 +32,13 @@ interface ContributionStatementRow {
   createdAt: Date | string | null;
 }
 
+interface DeleteStatementRow {
+  [key: string]: unknown;
+  outcome: DeleteVaultResult;
+}
+
+const GENERAL_SAVINGS_VAULT_ID = '00000000-0000-4000-8000-000000000001';
+
 export function calculateProgressPercent(savedAmount: string, targetAmount: string): string {
   return new Decimal(savedAmount).div(targetAmount).mul(100).toFixed(2);
 }
@@ -86,15 +93,16 @@ export class DrizzleVaultStore implements VaultStore {
   }
 
   async listVaults(): Promise<Vault[]> {
-    let rows = await this.aggregateQuery().orderBy(asc(vaults.createdAt), asc(vaults.id));
-    if (!rows.some((row) => row.name === 'General Savings')) {
-      await this.createVault({
+    await this.database
+      .insert(vaults)
+      .values({
+        id: GENERAL_SAVINGS_VAULT_ID,
         name: 'General Savings',
         emoji: '💰',
         targetAmount: '1.00',
-      });
-      rows = await this.aggregateQuery().orderBy(asc(vaults.createdAt), asc(vaults.id));
-    }
+      })
+      .onConflictDoNothing({ target: vaults.id });
+    const rows = await this.aggregateQuery().orderBy(asc(vaults.createdAt), asc(vaults.id));
     return rows.map(vaultResult);
   }
 
@@ -166,24 +174,42 @@ export class DrizzleVaultStore implements VaultStore {
   }
 
   async deleteVault(id: string): Promise<DeleteVaultResult> {
-    const [target] = await this.database
-      .select({ id: vaults.id })
-      .from(vaults)
-      .where(eq(vaults.id, id))
-      .limit(1);
-    if (!target) return 'not_found';
-
-    const [contribution] = await this.database
-      .select({ id: vaultContributions.id })
-      .from(vaultContributions)
-      .where(eq(vaultContributions.vaultId, id))
-      .limit(1);
-    if (contribution) return 'has_contributions';
-
-    const deleted = await this.database
-      .delete(vaults)
-      .where(eq(vaults.id, id))
-      .returning({ id: vaults.id });
-    return deleted.length > 0 ? 'deleted' : 'not_found';
+    const result = await this.database.execute<DeleteStatementRow>(sql`
+      with target as (
+        select ${vaults.id} as id
+        from ${vaults}
+        where ${vaults.id} = ${id}
+        for update
+      ),
+      contribution_state as (
+        select exists (
+          select 1
+          from ${vaultContributions}
+          inner join target on target.id = ${vaultContributions.vaultId}
+        ) as has_contributions
+      ),
+      deleted as (
+        delete from ${vaults}
+        where ${vaults.id} in (select target.id from target)
+          and not (select contribution_state.has_contributions from contribution_state)
+        returning ${vaults.id}
+      )
+      select case
+        when not exists (select 1 from target) then 'not_found'
+        when (select contribution_state.has_contributions from contribution_state)
+          then 'has_contributions'
+        when exists (select 1 from deleted) then 'deleted'
+        else 'not_found'
+      end as outcome
+    `);
+    const outcome = result.rows[0]?.outcome;
+    if (
+      outcome !== 'not_found'
+      && outcome !== 'has_contributions'
+      && outcome !== 'deleted'
+    ) {
+      throw new Error('Vault deletion did not return a valid outcome');
+    }
+    return outcome;
   }
 }

@@ -1,4 +1,6 @@
 import Decimal from 'decimal.js';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { Router } from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -14,7 +16,8 @@ import {
 import { createApp } from '../app';
 import type { SessionStore } from '../auth/session-store';
 import type { AppConfig } from '../config';
-import { calculateProgressPercent } from './drizzle-vault-store';
+import type { AppDatabase } from '../db/client';
+import { calculateProgressPercent, DrizzleVaultStore } from './drizzle-vault-store';
 import { createVaultRouter } from './routes';
 import type { ContributionResult, DeleteVaultResult, VaultStore } from './store';
 
@@ -28,7 +31,7 @@ class MemorySessionStore implements SessionStore {
 class MemoryVaultStore implements VaultStore {
   readonly vaults = new Map<string, Vault>();
   readonly contributions = new Map<string, VaultContribution[]>();
-  private nextId = 1;
+  private nextId = 100;
 
   private id(): string {
     return `00000000-0000-4000-8000-${String(this.nextId++).padStart(12, '0')}`;
@@ -46,8 +49,20 @@ class MemoryVaultStore implements VaultStore {
   }
 
   async listVaults(): Promise<Vault[]> {
-    if (![...this.vaults.values()].some((vault) => vault.name === 'General Savings')) {
-      await this.createVault({ name: 'General Savings', emoji: '💰', targetAmount: '1.00' });
+    const canonicalId = '00000000-0000-4000-8000-000000000001';
+    if (!this.vaults.has(canonicalId)) {
+      const now = '2026-09-03T08:00:00.000Z';
+      this.vaults.set(canonicalId, {
+        id: canonicalId,
+        name: 'General Savings',
+        emoji: '💰',
+        targetAmount: '1.00',
+        status: 'active',
+        savedAmount: '0.00',
+        progressPercent: '0.00',
+        createdAt: now,
+        updatedAt: now,
+      });
     }
     return [...this.vaults.values()].map((vault) => this.withProgress(vault));
   }
@@ -146,6 +161,89 @@ describe('Vault contracts', () => {
     { name: 'Phone', emoji: '📱', targetAmount: '1', targetDate: '2027-02-30' },
   ])('rejects invalid Vault input %#', (input) => {
     expect(() => createVaultSchema.parse(input)).toThrow();
+  });
+});
+
+describe('Drizzle Vault concurrency guards', () => {
+  const canonicalId = '00000000-0000-4000-8000-000000000001';
+  const now = new Date('2026-09-03T08:00:00.000Z');
+
+  it('keeps one fixed canonical General Savings Vault despite a user-name collision', async () => {
+    const rows = [{
+      id: '00000000-0000-4000-8000-000000000002',
+      name: 'General Savings',
+      emoji: '🏦',
+      targetAmount: '500.00',
+      targetDate: null,
+      status: 'active',
+      savedAmount: '0.00',
+      createdAt: now,
+      updatedAt: now,
+    }];
+    const database = {
+      insert: () => ({
+        values: (value: { id: string; name: string; emoji: string; targetAmount: string }) => ({
+          onConflictDoNothing: async () => {
+            if (!rows.some((row) => row.id === value.id)) {
+              rows.push({
+                ...value,
+                targetDate: null,
+                status: 'active',
+                savedAmount: '0.00',
+                createdAt: now,
+                updatedAt: now,
+              });
+            }
+          },
+        }),
+      }),
+      select: () => {
+        const query = {
+          from: () => query,
+          leftJoin: () => query,
+          groupBy: () => query,
+          orderBy: async () => rows,
+        };
+        return query;
+      },
+    } as unknown as AppDatabase;
+    const store = new DrizzleVaultStore(database);
+
+    const lists = await Promise.all([store.listVaults(), store.listVaults()]);
+
+    for (const list of lists) {
+      expect(list.map((vault) => [vault.id, vault.emoji, vault.targetAmount])).toEqual([
+        ['00000000-0000-4000-8000-000000000002', '🏦', '500.00'],
+        [canonicalId, '💰', '1.00'],
+      ]);
+    }
+    expect(rows.filter((row) => row.id === canonicalId)).toHaveLength(1);
+  });
+
+  it.each([
+    ['not_found', 'not_found'],
+    ['has_contributions', 'has_contributions'],
+    ['deleted', 'deleted'],
+  ] as const)('maps atomic delete outcome %s', async (databaseOutcome, expected) => {
+    const statements: SQL[] = [];
+    const database = {
+      execute: async (statement: SQL) => {
+        statements.push(statement);
+        return { rows: [{ outcome: databaseOutcome }] };
+      },
+    } as unknown as AppDatabase;
+
+    const result = await new DrizzleVaultStore(database).deleteVault(
+      '00000000-0000-4000-8000-000000000099',
+    );
+
+    expect(result).toBe(expected);
+    expect(statements).toHaveLength(1);
+    const emittedSql = new PgDialect().sqlToQuery(statements[0]).sql.toLowerCase();
+    expect(emittedSql).toContain('with target as');
+    expect(emittedSql).toContain('for update');
+    expect(emittedSql).toContain('delete from');
+    expect(emittedSql).toContain('has_contributions');
   });
 });
 
