@@ -24,6 +24,17 @@ interface NetWorthAggregateRow {
   borrowedDebt: string;
 }
 
+function compositionPrecision(values: string[]): number {
+  const widestComponent = Math.max(1, ...values.map((value) => {
+    const significantDigits = value
+      .replace(/^[+-]/, '')
+      .replace('.', '')
+      .replace(/^0+/, '');
+    return significantDigits.length;
+  }));
+  return widestComponent + 1;
+}
+
 function assetResult(row: typeof assets.$inferSelect): AssetRecord {
   return {
     id: row.id,
@@ -117,10 +128,18 @@ export class DrizzleNetWorthStore implements NetWorthStore {
     const row = result.rows[0];
     if (!row) throw new Error('Net worth aggregate query returned no row');
 
-    const manualAssets = new Decimal(row.manualAssets);
-    const receivables = new Decimal(row.receivables);
-    const manualLiabilities = new Decimal(row.manualLiabilities);
-    const borrowedDebt = new Decimal(row.borrowedDebt);
+    const MoneyDecimal = Decimal.clone({
+      precision: compositionPrecision([
+        row.manualAssets,
+        row.receivables,
+        row.manualLiabilities,
+        row.borrowedDebt,
+      ]),
+    });
+    const manualAssets = new MoneyDecimal(row.manualAssets);
+    const receivables = new MoneyDecimal(row.receivables);
+    const manualLiabilities = new MoneyDecimal(row.manualLiabilities);
+    const borrowedDebt = new MoneyDecimal(row.borrowedDebt);
     const totalOwned = manualAssets.plus(receivables);
     const totalOwed = manualLiabilities.plus(borrowedDebt);
     const netWorth = totalOwned.minus(totalOwed);

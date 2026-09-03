@@ -295,8 +295,8 @@ describe('Net Worth APIs', () => {
 });
 
 describe('DrizzleNetWorthStore', () => {
-  it('returns a multi-row aggregate wider than one numeric(20, 2) record', async () => {
-    const perRecordMaximum = '999999999999999999.00';
+  it('preserves cents when two maximum records exceed Decimal default precision', async () => {
+    const aggregateOfTwoMaximumRecords = '1999999999999999999.98';
     const database = {
       execute: async (statement: SQL) => {
         const emittedSql = new PgDialect().sqlToQuery(statement).sql.toLowerCase();
@@ -305,7 +305,7 @@ describe('DrizzleNetWorthStore', () => {
         }
         return {
           rows: [{
-            manualAssets: new Decimal(perRecordMaximum).mul(2).toFixed(2),
+            manualAssets: aggregateOfTwoMaximumRecords,
             receivables: '0.00',
             manualLiabilities: '0.00',
             borrowedDebt: '0.00',
@@ -315,13 +315,13 @@ describe('DrizzleNetWorthStore', () => {
     } as unknown as AppDatabase;
 
     await expect(new DrizzleNetWorthStore(database).getNetWorth()).resolves.toEqual({
-      manualAssets: '1999999999999999998.00',
+      manualAssets: '1999999999999999999.98',
       receivables: '0.00',
-      totalOwned: '1999999999999999998.00',
+      totalOwned: '1999999999999999999.98',
       manualLiabilities: '0.00',
       borrowedDebt: '0.00',
       totalOwed: '0.00',
-      netWorth: '1999999999999999998.00',
+      netWorth: '1999999999999999999.98',
       status: 'positive',
     });
   });
