@@ -36,6 +36,7 @@ CREATE TABLE "monthly_budgets" (
 	"savings_target" numeric(20, 2) NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "monthly_budgets_month_format" CHECK ("monthly_budgets"."month" ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
 	CONSTRAINT "monthly_budgets_salary_non_negative" CHECK ("monthly_budgets"."salary" >= 0),
 	CONSTRAINT "monthly_budgets_spending_limit_non_negative" CHECK ("monthly_budgets"."spending_limit" >= 0),
 	CONSTRAINT "monthly_budgets_savings_target_non_negative" CHECK ("monthly_budgets"."savings_target" >= 0)
@@ -61,7 +62,9 @@ CREATE TABLE "vaults" (
 	CONSTRAINT "vaults_target_amount_positive" CHECK ("vaults"."target_amount" > 0)
 );
 --> statement-breakpoint
-ALTER TABLE "transactions" ADD COLUMN "category" varchar(24) DEFAULT 'other' NOT NULL;--> statement-breakpoint
+ALTER TABLE "transactions" ADD COLUMN "category" varchar(24);--> statement-breakpoint
+UPDATE "transactions" SET "category" = 'other' WHERE "category" IS NULL;--> statement-breakpoint
+ALTER TABLE "transactions" ALTER COLUMN "category" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "vault_contributions" ADD CONSTRAINT "vault_contributions_vault_id_vaults_id_fk" FOREIGN KEY ("vault_id") REFERENCES "public"."vaults"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "income_created_at_idx" ON "income" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "vault_contributions_vault_id_idx" ON "vault_contributions" USING btree ("vault_id");--> statement-breakpoint

@@ -68,7 +68,7 @@ describe('Neon PostgreSQL integration', () => {
       expect(analytics.lendingByPerson).toContainEqual({ personName: lender, totalAmount: '20.20', numberOfLoans: 1 });
       expect(analytics.borrowingByPerson).toContainEqual({ personName: borrower, totalAmount: '30.30', numberOfBorrowings: 1 });
 
-      await expect(database.insert(transactions).values({ description: 'Constraint probe', amount: '0.00' }))
+      await expect(database.insert(transactions).values({ description: 'Constraint probe', category: 'other', amount: '0.00' }))
         .rejects.toThrow();
     } finally {
       for (const item of createdIds) {

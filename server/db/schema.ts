@@ -24,7 +24,7 @@ export const transactions = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     description: text('description').notNull(),
-    category: varchar('category', { length: 24 }).notNull().default('other'),
+    category: varchar('category', { length: 24 }).notNull(),
     amount: money('amount'),
     createdAt: createdAt(),
   },
@@ -45,6 +45,7 @@ export const monthlyBudgets = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    check('monthly_budgets_month_format', sql`${table.month} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
     check('monthly_budgets_salary_non_negative', sql`${table.salary} >= 0`),
     check('monthly_budgets_spending_limit_non_negative', sql`${table.spendingLimit} >= 0`),
     check('monthly_budgets_savings_target_non_negative', sql`${table.savingsTarget} >= 0`),
