@@ -34,10 +34,17 @@ interface ContributionStatementRow {
 
 interface DeleteStatementRow {
   [key: string]: unknown;
-  outcome: DeleteVaultResult;
+  id: string;
 }
 
 const GENERAL_SAVINGS_VAULT_ID = '00000000-0000-4000-8000-000000000001';
+
+function isForeignKeyViolation(error: unknown): error is { code: '23503' } {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === '23503';
+}
 
 export function calculateProgressPercent(savedAmount: string, targetAmount: string): string {
   return new Decimal(savedAmount).div(targetAmount).mul(100).toFixed(2);
@@ -174,42 +181,16 @@ export class DrizzleVaultStore implements VaultStore {
   }
 
   async deleteVault(id: string): Promise<DeleteVaultResult> {
-    const result = await this.database.execute<DeleteStatementRow>(sql`
-      with target as (
-        select ${vaults.id} as id
-        from ${vaults}
-        where ${vaults.id} = ${id}
-        for update
-      ),
-      contribution_state as (
-        select exists (
-          select 1
-          from ${vaultContributions}
-          inner join target on target.id = ${vaultContributions.vaultId}
-        ) as has_contributions
-      ),
-      deleted as (
+    try {
+      const result = await this.database.execute<DeleteStatementRow>(sql`
         delete from ${vaults}
-        where ${vaults.id} in (select target.id from target)
-          and not (select contribution_state.has_contributions from contribution_state)
+        where ${vaults.id} = ${id}
         returning ${vaults.id}
-      )
-      select case
-        when not exists (select 1 from target) then 'not_found'
-        when (select contribution_state.has_contributions from contribution_state)
-          then 'has_contributions'
-        when exists (select 1 from deleted) then 'deleted'
-        else 'not_found'
-      end as outcome
-    `);
-    const outcome = result.rows[0]?.outcome;
-    if (
-      outcome !== 'not_found'
-      && outcome !== 'has_contributions'
-      && outcome !== 'deleted'
-    ) {
-      throw new Error('Vault deletion did not return a valid outcome');
+      `);
+      return result.rows.length > 0 ? 'deleted' : 'not_found';
+    } catch (error) {
+      if (isForeignKeyViolation(error)) return 'has_contributions';
+      throw error;
     }
-    return outcome;
   }
 }

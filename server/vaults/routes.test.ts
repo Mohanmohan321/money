@@ -3,7 +3,7 @@ import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { Router } from 'express';
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createVaultContributionSchema,
@@ -221,15 +221,14 @@ describe('Drizzle Vault concurrency guards', () => {
   });
 
   it.each([
-    ['not_found', 'not_found'],
-    ['has_contributions', 'has_contributions'],
-    ['deleted', 'deleted'],
-  ] as const)('maps atomic delete outcome %s', async (databaseOutcome, expected) => {
+    ['no row', [], 'not_found'],
+    ['one returned row', [{ id: '00000000-0000-4000-8000-000000000099' }], 'deleted'],
+  ] as const)('maps %s from atomic DELETE RETURNING', async (_case, rows, expected) => {
     const statements: SQL[] = [];
     const database = {
       execute: async (statement: SQL) => {
         statements.push(statement);
-        return { rows: [{ outcome: databaseOutcome }] };
+        return { rows };
       },
     } as unknown as AppDatabase;
 
@@ -240,10 +239,64 @@ describe('Drizzle Vault concurrency guards', () => {
     expect(result).toBe(expected);
     expect(statements).toHaveLength(1);
     const emittedSql = new PgDialect().sqlToQuery(statements[0]).sql.toLowerCase();
-    expect(emittedSql).toContain('with target as');
-    expect(emittedSql).toContain('for update');
     expect(emittedSql).toContain('delete from');
-    expect(emittedSql).toContain('has_contributions');
+    expect(emittedSql).toContain('returning');
+  });
+
+  it('maps only PostgreSQL foreign-key violations to the funded Vault outcome and 409', async () => {
+    const database = {
+      execute: async () => {
+        throw Object.assign(new Error('violates foreign key constraint'), { code: '23503' });
+      },
+    } as unknown as AppDatabase;
+    const protectedRouter = Router();
+    protectedRouter.use(createVaultRouter(new DrizzleVaultStore(database)));
+    const agent = request.agent(createApp({
+      config,
+      sessionStore: new MemorySessionStore(),
+      protectedRouter,
+    }));
+    await agent.post('/api/auth/login').send({ password: '2003' }).expect(200);
+
+    const response = await agent
+      .delete('/api/vaults/00000000-0000-4000-8000-000000000099')
+      .expect(409);
+
+    expect(response.body).toEqual({
+      success: false,
+      error: {
+        code: 'VAULT_HAS_CONTRIBUTIONS',
+        message: 'Vaults with contributions must be archived instead of deleted',
+      },
+    });
+  });
+
+  it('propagates non-foreign-key database errors to the sanitized 500 response', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const database = {
+      execute: async () => {
+        throw Object.assign(new Error('serialization failure with private details'), {
+          code: '40001',
+        });
+      },
+    } as unknown as AppDatabase;
+    const protectedRouter = Router();
+    protectedRouter.use(createVaultRouter(new DrizzleVaultStore(database)));
+    const agent = request.agent(createApp({
+      config,
+      sessionStore: new MemorySessionStore(),
+      protectedRouter,
+    }));
+    await agent.post('/api/auth/login').send({ password: '2003' }).expect(200);
+
+    const response = await agent
+      .delete('/api/vaults/00000000-0000-4000-8000-000000000099')
+      .expect(500);
+
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
+    });
   });
 });
 
