@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createPersonRecordSchema,
+  createIncomeSchema,
   createTransactionSchema,
   moneySchema,
+  upsertBudgetSchema,
 } from './contracts';
 
 describe('moneySchema', () => {
@@ -47,5 +49,16 @@ describe('create record contracts', () => {
     expect(() =>
       createPersonRecordSchema.parse({ personName: label, amount: '1' }),
     ).toThrow();
+  });
+});
+
+describe('budget contracts', () => {
+  it('accepts zero plan values and strips generated fields', () => {
+    expect(upsertBudgetSchema.parse({ salary: '0', spendingLimit: '20000', savingsTarget: '5000' }))
+      .toEqual({ salary: '0.00', spendingLimit: '20000.00', savingsTarget: '5000.00' });
+    expect(createIncomeSchema.parse({ source: ' Bonus ', category: 'bonus', amount: '1250' }))
+      .toEqual({ source: 'Bonus', category: 'bonus', amount: '1250.00' });
+    expect(createTransactionSchema.parse({ description: 'Swiggy', amount: '25', category: 'food' }).category)
+      .toBe('food');
   });
 });

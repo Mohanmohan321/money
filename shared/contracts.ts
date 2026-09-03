@@ -2,17 +2,19 @@ import { z } from 'zod';
 
 const plainMoneyPattern = /^\d+(?:\.\d{1,2})?$/;
 
+function normalizeMoney(value: string): string {
+  const [integerPart, fractionalPart = ''] = value.split('.');
+  const normalizedInteger = integerPart.replace(/^0+(?=\d)/, '');
+  return `${normalizedInteger}.${fractionalPart.padEnd(2, '0')}`;
+}
+
 export const moneySchema = z
   .string({ error: 'Amount must be a decimal string' })
   .trim()
   .refine((value) => plainMoneyPattern.test(value), {
     message: 'Amount must be a positive number with at most 2 decimal places',
   })
-  .transform((value) => {
-    const [integerPart, fractionalPart = ''] = value.split('.');
-    const normalizedInteger = integerPart.replace(/^0+(?=\d)/, '');
-    return `${normalizedInteger}.${fractionalPart.padEnd(2, '0')}`;
-  })
+  .transform(normalizeMoney)
   .refine((value) => value !== '0.00', {
     message: 'Amount must be greater than zero',
   })
@@ -25,6 +27,10 @@ const descriptionSchema = z
   .trim()
   .min(1, 'Description is required')
   .max(200, 'Description must be 200 characters or fewer');
+
+export const spendingCategorySchema = z.enum([
+  'food', 'travel', 'shopping', 'coffee', 'entertainment', 'health', 'bills', 'other',
+]);
 
 const personNameSchema = z
   .string({ error: 'Person name is required' })
@@ -42,7 +48,15 @@ export const loginSchema = z.object({
 export const createTransactionSchema = z.object({
   description: descriptionSchema,
   amount: moneySchema,
+  category: spendingCategorySchema.optional(),
 });
+
+export const incomeCategorySchema = z.enum(['bonus', 'freelance', 'refund', 'other']);
+export const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Month must use YYYY-MM');
+export const planMoneySchema = z.string().trim().regex(/^\d+(?:\.\d{1,2})?$/)
+  .transform(normalizeMoney).refine((value) => value.split('.')[0].length <= 18, 'Amount is too large');
+export const upsertBudgetSchema = z.object({ salary: planMoneySchema, spendingLimit: planMoneySchema, savingsTarget: planMoneySchema });
+export const createIncomeSchema = z.object({ source: descriptionSchema, category: incomeCategorySchema, amount: moneySchema });
 
 export const createPersonRecordSchema = z.object({
   personName: personNameSchema,
@@ -83,12 +97,43 @@ export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 export type CreatePersonRecordInput = z.infer<typeof createPersonRecordSchema>;
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
+export type SpendingCategory = z.infer<typeof spendingCategorySchema>;
+export type IncomeCategory = z.infer<typeof incomeCategorySchema>;
+export type UpsertBudgetInput = z.infer<typeof upsertBudgetSchema>;
+export type CreateIncomeInput = z.infer<typeof createIncomeSchema>;
 
 export interface TransactionRecord {
   id: string;
   description: string;
+  category?: SpendingCategory;
   amount: string;
   createdAt: string;
+}
+
+export interface MonthlyBudget {
+  month: string;
+  salary: string;
+  spendingLimit: string;
+  savingsTarget: string;
+  source: 'saved' | 'suggested';
+  updatedAt?: string;
+}
+
+export interface IncomeRecord {
+  id: string;
+  source: string;
+  category: IncomeCategory;
+  amount: string;
+  createdAt: string;
+}
+
+export interface BudgetSummary {
+  income: string;
+  spending: string;
+  savings: string;
+  amountLeft: string;
+  budgetScore: string;
+  spendingRemaining: string;
 }
 
 export interface PersonRecord {
