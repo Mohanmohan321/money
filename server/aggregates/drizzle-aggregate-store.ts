@@ -69,7 +69,7 @@ function asHistoryItem(value: unknown): HistoryItem {
     createdAt: String(item.createdAt),
   };
   if (item.type === 'transaction') {
-    return { ...base, type: 'transaction', description: String(item.description) };
+    return { ...base, type: 'transaction', category: 'other', description: String(item.description) };
   }
   if (item.type === 'lent' || item.type === 'borrowed') {
     return { ...base, type: item.type, personName: String(item.personName) };

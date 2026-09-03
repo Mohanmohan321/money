@@ -11,7 +11,7 @@ import { moneyBorrowed, moneyLent, transactions } from '../db/schema';
 import type { ListFilters, RecordStore } from './store';
 
 function transactionResult(row: typeof transactions.$inferSelect): TransactionRecord {
-  return { ...row, createdAt: row.createdAt.toISOString() };
+  return { ...row, category: 'other', createdAt: row.createdAt.toISOString() };
 }
 
 function personResult(row: typeof moneyLent.$inferSelect): PersonRecord {

@@ -28,7 +28,7 @@ class MemoryRecordStore implements RecordStore {
   lastFilters: ListFilters = {};
 
   async createTransaction(input: CreateTransactionInput) {
-    const item = { id: `00000000-0000-4000-8000-${String(this.nextId++).padStart(12, '0')}`, ...input, createdAt: '2026-09-02T10:00:00.000Z' };
+    const item = { id: `00000000-0000-4000-8000-${String(this.nextId++).padStart(12, '0')}`, ...input, category: input.category ?? 'other' as const, createdAt: '2026-09-02T10:00:00.000Z' };
     this.transactions.set(item.id, item);
     return item;
   }

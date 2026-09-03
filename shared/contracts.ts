@@ -105,7 +105,7 @@ export type CreateIncomeInput = z.infer<typeof createIncomeSchema>;
 export interface TransactionRecord {
   id: string;
   description: string;
-  category?: SpendingCategory;
+  category: SpendingCategory;
   amount: string;
   createdAt: string;
 }
