@@ -89,6 +89,16 @@ describe('budgeting domain', () => {
     },
   );
 
+  it('does not round a maximum-value score just below 99.995 percent up to 100', () => {
+    expect(calculateBudgetSummary({
+      salary: '999999999999999999.99',
+      additionalIncome: '0.00',
+      spending: '0.00',
+      savings: '999949999999999999.99',
+      spendingLimit: '0.00',
+    }).budgetScore).toBe('99.99');
+  });
+
   it('returns a zero score for zero income and preserves negative shortfalls', () => {
     expect(calculateBudgetSummary({
       salary: '0.00', additionalIncome: '0.00', spending: '10.00',

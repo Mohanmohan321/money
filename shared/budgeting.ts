@@ -33,7 +33,7 @@ function calculationPrecision(values: string[]): number {
       .replace(/^0+/, '');
     return significantDigits.length;
   }));
-  return Math.max(16, widestOperand + 2);
+  return Math.max(16, widestOperand + 4);
 }
 
 export function calculateBudgetSummary(input: {

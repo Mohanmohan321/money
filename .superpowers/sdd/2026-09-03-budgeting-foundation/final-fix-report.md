@@ -148,3 +148,28 @@ No live PostgreSQL execution is claimed and no database was touched. The product
 Round-2 files: `shared/budgeting.ts`, `shared/budgeting.test.ts`, `server/db/integration-cleanup.ts`, `server/db/integration-cleanup.test.ts`, `server/db/integration.test.ts`, and this appended report section.
 
 The exact round-2 commit SHA is reported in the post-commit handoff for the same content-addressing reason noted above.
+
+## Round 3 Arithmetic Re-review Fix
+
+Round-3 starting SHA: `a09562606e7b7ff26c434e5a5bdd93e9cfdd60f0`
+
+The remaining near-clamp rounding case exposed that `max(16, widestOperand + 2)` could round a valid high-magnitude ratio to the half-cent boundary before `toFixed(2)`. The scoped calculation precision is now `max(16, widestOperand + 4)`, retaining a minimum for small repeating ratios and four growth/rounding guard digits for maximum-width operands.
+
+### Round-3 RED/GREEN evidence
+
+- RED: `npm.cmd test -- shared/budgeting.test.ts` exited 1 with 1 failed and 40 passed. For salary `999999999999999999.99` and savings `999949999999999999.99`, the implementation returned `100.00` instead of the exact two-decimal result `99.99`.
+- GREEN: the same focused command exited 0 with 41/41 passed. This includes `33.33`, `85.71`, the new `99.99` boundary, maximum-value income/Amount left, zero income, clamps, and negative shortfalls.
+
+### Round-3 final verification
+
+| Command | Result |
+|---|---|
+| `npm.cmd test -- shared/budgeting.test.ts` | exit 0; 1 file, 41 tests passed |
+| `npm.cmd test` | exit 0; 17 files, 178 tests passed |
+| `npm.cmd run typecheck` | exit 0; `tsc --noEmit` |
+| `npm.cmd run db:check` | exit 0; Drizzle Kit: `Everything's fine` |
+| `git diff --check` | exit 0 after this report append |
+
+The production build and disposable-database integration suite were not rerun for this arithmetic-only change. No entrypoint, dependency, schema, route, build configuration, or integration harness changed. The prior elevated production build passed, and the previously recorded integration boundary remains unchanged: `TEST_DATABASE_URL` is absent, so no live database acceptance is claimed.
+
+Round-3 files are limited to `shared/budgeting.ts`, `shared/budgeting.test.ts`, and this report. The exact round-3 commit SHA is reported in the post-commit handoff.
