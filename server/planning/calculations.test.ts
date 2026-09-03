@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildAnnualReport,
+  buildPlanningBudgets,
   fillBudgetDays,
   fillBudgetMonths,
   fillCategorySpending,
@@ -10,6 +11,52 @@ import {
 } from './drizzle-planning-store';
 
 describe('planning calculations', () => {
+  it('derives saved and suggested annual budgets from one ordered batch', () => {
+    const budgets = buildPlanningBudgets('2026', [
+      {
+        month: '2025-11', salary: '100.00', spendingLimit: '80.00', savingsTarget: '20.00',
+        updatedAt: new Date('2025-11-15T00:00:00.000Z'),
+      },
+      {
+        month: '2026-02', salary: '200.00', spendingLimit: '150.00', savingsTarget: '50.00',
+        updatedAt: new Date('2026-02-15T00:00:00.000Z'),
+      },
+      {
+        month: '2026-05', salary: '300.00', spendingLimit: '220.00', savingsTarget: '80.00',
+        updatedAt: new Date('2026-05-15T00:00:00.000Z'),
+      },
+    ]);
+
+    expect(budgets[0]).toEqual({
+      month: '2026-01', salary: '100.00', spendingLimit: '80.00',
+      savingsTarget: '20.00', source: 'suggested',
+    });
+    expect(budgets[1]).toEqual({
+      month: '2026-02', salary: '200.00', spendingLimit: '150.00',
+      savingsTarget: '50.00', source: 'saved', updatedAt: '2026-02-15T00:00:00.000Z',
+    });
+    expect(budgets[2]).toEqual({
+      month: '2026-03', salary: '200.00', spendingLimit: '150.00',
+      savingsTarget: '50.00', source: 'suggested',
+    });
+    expect(budgets[4]).toEqual({
+      month: '2026-05', salary: '300.00', spendingLimit: '220.00',
+      savingsTarget: '80.00', source: 'saved', updatedAt: '2026-05-15T00:00:00.000Z',
+    });
+    expect(budgets[11]).toEqual({
+      month: '2026-12', salary: '300.00', spendingLimit: '220.00',
+      savingsTarget: '80.00', source: 'suggested',
+    });
+  });
+
+  it('returns zero suggestions when the budget batch is empty', () => {
+    expect(buildPlanningBudgets('2026', [])[0]).toEqual({
+      month: '2026-01', salary: '0.00', spendingLimit: '0.00',
+      savingsTarget: '0.00', source: 'suggested',
+    });
+    expect(buildPlanningBudgets('2026', [])).toHaveLength(12);
+  });
+
   it('zero-fills every day in a leap-year February and preserves populated activity', () => {
     const days = fillBudgetDays(
       new Date('2028-02-01T00:00:00.000Z'),

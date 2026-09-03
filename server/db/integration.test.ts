@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 import { neon } from '@neondatabase/serverless';
 import Decimal from 'decimal.js';
-import { eq } from 'drizzle-orm';
+import { and, eq, gte, lt } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/neon-http/migrator';
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -13,8 +13,10 @@ import { DrizzleSessionStore } from '../auth/drizzle-session-store';
 import { hashSessionToken } from '../auth/session';
 import { DrizzleBudgetStore } from '../budgets/drizzle-budget-store';
 import { DrizzleNetWorthStore } from '../net-worth/drizzle-net-worth-store';
+import { DrizzlePlanningStore } from '../planning/drizzle-planning-store';
 import { DrizzleRecordStore } from '../records/drizzle-record-store';
 import { DrizzleVaultStore } from '../vaults/drizzle-vault-store';
+import { monthRange, weekRangeContaining, yearRange } from '../lib/time';
 import { createDatabase, type AppDatabase } from './client';
 import {
   assets,
@@ -38,6 +40,7 @@ interface IntegrationStores {
   budgets: DrizzleBudgetStore;
   vaultStore: DrizzleVaultStore;
   netWorth: DrizzleNetWorthStore;
+  planning: DrizzlePlanningStore;
   aggregates: DrizzleAggregateStore;
   sessions: DrizzleSessionStore;
 }
@@ -88,6 +91,30 @@ async function allocateBudgetMonths(database: AppDatabase): Promise<[string, str
   throw new Error('Could not allocate unique integration-test budget months');
 }
 
+async function allocatePlanningYear(database: AppDatabase): Promise<string> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const seed = Number.parseInt(randomUUID().slice(0, 8), 16);
+    const year = String(6000 + (seed % 3000));
+    const previousDecember = `${Number(year) - 1}-12`;
+    const nextJanuary = `${Number(year) + 1}-01`;
+    const from = new Date(`${year}-01-01T00:00:00.000Z`);
+    const toExclusive = new Date(`${Number(year) + 1}-01-01T00:00:00.000Z`);
+    const existing = await Promise.all([
+      database.select({ month: monthlyBudgets.month }).from(monthlyBudgets)
+        .where(and(gte(monthlyBudgets.month, previousDecember), lt(monthlyBudgets.month, nextJanuary)))
+        .limit(1),
+      database.select({ id: transactions.id }).from(transactions)
+        .where(and(gte(transactions.createdAt, from), lt(transactions.createdAt, toExclusive))).limit(1),
+      database.select({ id: income.id }).from(income)
+        .where(and(gte(income.createdAt, from), lt(income.createdAt, toExclusive))).limit(1),
+      database.select({ id: vaultContributions.id }).from(vaultContributions)
+        .where(and(gte(vaultContributions.createdAt, from), lt(vaultContributions.createdAt, toExclusive))).limit(1),
+    ]);
+    if (existing.every((rows) => rows.length === 0)) return year;
+  }
+  throw new Error('Could not allocate a clean integration-test planning year');
+}
+
 beforeAll(async () => {
   const databaseUrl = requireDisposableDatabaseUrl();
   const database = createDatabase(databaseUrl);
@@ -98,6 +125,7 @@ beforeAll(async () => {
     budgets: new DrizzleBudgetStore(database),
     vaultStore: new DrizzleVaultStore(database),
     netWorth: new DrizzleNetWorthStore(database),
+    planning: new DrizzlePlanningStore(database, new DrizzleBudgetStore(database)),
     aggregates: new DrizzleAggregateStore(database),
     sessions: new DrizzleSessionStore(database),
   };
@@ -270,6 +298,108 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         amount: '41.41',
         createdAt: correctedAt,
       }));
+    } finally {
+      await cleanup.run();
+    }
+  });
+
+  it('maps monthly, breakdown, and annual planning boundaries through the production store', async () => {
+    const { database, budgets, planning } = testStores();
+    const year = await allocatePlanningYear(database);
+    const previousDecember = `${Number(year) - 1}-12`;
+    const january = `${year}-01`;
+    const february = `${year}-02`;
+    const suffix = randomUUID();
+    const source = `Planning boundary income ${suffix}`;
+    const transactionIds = [randomUUID(), randomUUID()];
+    const incomeId = randomUUID();
+    const vaultId = randomUUID();
+    const contributionId = randomUUID();
+    const cleanup = new CleanupRegistry();
+    cleanup.add(() => database.delete(monthlyBudgets).where(eq(monthlyBudgets.month, previousDecember)));
+    cleanup.add(() => database.delete(monthlyBudgets).where(eq(monthlyBudgets.month, february)));
+
+    try {
+      await budgets.upsertBudget(previousDecember, {
+        salary: '100.00', spendingLimit: '80.00', savingsTarget: '20.00',
+      });
+      await budgets.upsertBudget(february, {
+        salary: '200.00', spendingLimit: '150.00', savingsTarget: '50.00',
+      });
+      await database.insert(income).values({
+        id: incomeId, source, category: 'other', amount: '0.03',
+        createdAt: new Date(`${year}-01-01T00:00:00.000Z`),
+      });
+      cleanup.add(() => database.delete(income).where(eq(income.id, incomeId)));
+      await database.insert(transactions).values([
+        {
+          id: transactionIds[0], description: `January boundary ${suffix}`, category: 'food',
+          amount: '0.01', createdAt: new Date(`${year}-01-31T23:59:59.999Z`),
+        },
+        {
+          id: transactionIds[1], description: `February boundary ${suffix}`, category: 'travel',
+          amount: '0.04', createdAt: new Date(`${year}-02-01T00:00:00.000Z`),
+        },
+      ]);
+      cleanup.add(() => database.delete(transactions).where(eq(transactions.id, transactionIds[0])));
+      cleanup.add(() => database.delete(transactions).where(eq(transactions.id, transactionIds[1])));
+      await database.insert(vaults).values({
+        id: vaultId, name: `Planning Vault ${suffix}`, emoji: 'PV', targetAmount: '1.00',
+      });
+      cleanup.add(() => database.delete(vaults).where(eq(vaults.id, vaultId)));
+      await database.insert(vaultContributions).values({
+        id: contributionId, vaultId, amount: '0.02',
+        createdAt: new Date(`${year}-01-15T12:00:00.000Z`),
+      });
+      cleanup.add(() => database.delete(vaultContributions)
+        .where(eq(vaultContributions.id, contributionId)));
+
+      const januaryRange = monthRange(january, 'UTC');
+      const januaryWeek = weekRangeContaining(`${year}-01-15`, 'UTC');
+      const monthly = await planning.getMonthly({
+        month: january, timezone: 'UTC', range: januaryRange, week: januaryWeek,
+        weekFromLabel: `${year}-01-13`, weekToLabel: `${year}-01-19`,
+      });
+      expect(monthly.budget).toEqual(expect.objectContaining({
+        month: january, source: 'suggested', salary: '100.00', spendingLimit: '80.00',
+      }));
+      expect(monthly.summary).toEqual(expect.objectContaining({
+        income: '100.03', spending: '0.01', savings: '0.02', amountLeft: '100.00',
+      }));
+      expect(monthly.categories[0]).toEqual({
+        category: 'food', amount: '0.01', percentage: '100.00',
+      });
+
+      const annualRange = yearRange(year, 'UTC');
+      const breakdown = await planning.getBreakdown({
+        year, selectedMonth: january, timezone: 'UTC', yearRange: annualRange,
+        monthRange: januaryRange,
+      });
+      expect(breakdown.months[0]).toEqual(expect.objectContaining({
+        month: january, income: '100.03', spending: '0.01', savings: '0.02',
+      }));
+      expect(breakdown.months[1]).toEqual(expect.objectContaining({
+        month: february, income: '200.00', spending: '0.04', savings: '0.00',
+      }));
+      expect(breakdown.days).toHaveLength(31);
+      expect(breakdown.days[0]?.income).toBe('0.03');
+      expect(breakdown.days[14]).toEqual(expect.objectContaining({
+        savings: '0.02', vaultContributionCount: 1, subscriptionPaymentCount: 0,
+      }));
+      expect(breakdown.days[30]?.spending).toBe('0.01');
+
+      const annual = await planning.getAnnual({
+        year, timezone: 'UTC', range: annualRange,
+      });
+      expect(annual.summary).toEqual(expect.objectContaining({
+        income: '2300.03', spending: '0.05', savings: '0.02', amountLeft: '2299.96',
+        spendingRemaining: '1729.95',
+      }));
+      expect(annual.incomeBySource).toContainEqual(expect.objectContaining({
+        source, amount: '0.03',
+      }));
+      expect(annual.highestSpendingMonth).toBe(february);
+      expect(annual.bestSavingMonth).toBe(january);
     } finally {
       await cleanup.run();
     }

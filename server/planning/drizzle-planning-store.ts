@@ -9,6 +9,7 @@ import type {
   CategorySpend,
   IncomeCategory,
   MonthBudgetBreakdown,
+  MonthlyBudget,
   RecentActivity,
   SpendingCategory,
 } from '../../shared/contracts';
@@ -168,6 +169,15 @@ interface MonthRow extends TotalsRow {
   month: string;
 }
 
+export interface SavedBudgetAggregate {
+  [key: string]: unknown;
+  month: string;
+  salary: string;
+  spendingLimit: string;
+  savingsTarget: string;
+  updatedAt: Date | string;
+}
+
 export interface IncomeSourceAggregate {
   [key: string]: unknown;
   source: string;
@@ -274,6 +284,42 @@ function monthKeys(year: string): string[] {
   return Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, '0')}`);
 }
 
+export function buildPlanningBudgets(
+  year: string,
+  rows: SavedBudgetAggregate[],
+): MonthlyBudget[] {
+  const firstMonth = `${year}-01`;
+  const sorted = [...rows].sort((left, right) => left.month.localeCompare(right.month));
+  let carried = sorted.filter((row) => row.month < firstMonth).at(-1);
+  const savedByMonth = new Map(
+    sorted.filter((row) => row.month.startsWith(`${year}-`)).map((row) => [row.month, row]),
+  );
+
+  return monthKeys(year).map((month) => {
+    const saved = savedByMonth.get(month);
+    if (saved) {
+      carried = saved;
+      return {
+        month,
+        salary: normalizeMoney(saved.salary),
+        spendingLimit: normalizeMoney(saved.spendingLimit),
+        savingsTarget: normalizeMoney(saved.savingsTarget),
+        source: 'saved',
+        updatedAt: saved.updatedAt instanceof Date
+          ? saved.updatedAt.toISOString()
+          : new Date(saved.updatedAt).toISOString(),
+      };
+    }
+    return {
+      month,
+      salary: normalizeMoney(carried?.salary),
+      spendingLimit: normalizeMoney(carried?.spendingLimit),
+      savingsTarget: normalizeMoney(carried?.savingsTarget),
+      source: 'suggested',
+    };
+  });
+}
+
 export class DrizzlePlanningStore implements PlanningStore {
   constructor(
     private readonly database: AppDatabase,
@@ -281,7 +327,37 @@ export class DrizzlePlanningStore implements PlanningStore {
   ) {}
 
   private async loadBudgets(year: string) {
-    return Promise.all(monthKeys(year).map((month) => this.budgetStore.getBudget(month)));
+    const firstMonth = `${year}-01`;
+    const lastMonth = `${year}-12`;
+    const result = await this.database.execute(sql<SavedBudgetAggregate>`
+      WITH applicable_budgets AS (
+        (
+          SELECT month, salary, spending_limit, savings_target, updated_at
+          FROM monthly_budgets
+          WHERE month < ${firstMonth}
+          ORDER BY month DESC
+          LIMIT 1
+        )
+        UNION ALL
+        (
+          SELECT month, salary, spending_limit, savings_target, updated_at
+          FROM monthly_budgets
+          WHERE month >= ${firstMonth} AND month <= ${lastMonth}
+        )
+      )
+      SELECT
+        month,
+        salary::text AS salary,
+        spending_limit::text AS "spendingLimit",
+        savings_target::text AS "savingsTarget",
+        updated_at AS "updatedAt"
+      FROM applicable_budgets
+      ORDER BY month
+    `);
+    return buildPlanningBudgets(
+      year,
+      result.rows as unknown as SavedBudgetAggregate[],
+    );
   }
 
   private async loadYearMonths(
