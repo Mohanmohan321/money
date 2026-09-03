@@ -105,6 +105,30 @@ export const createVaultSchema = z.object({
 
 export const createVaultContributionSchema = z.object({ amount: moneySchema });
 
+const netWorthNameSchema = z.string().trim().min(1).max(80);
+const netWorthNoteSchema = z.string().trim().max(500).optional();
+
+export const assetTypeSchema = z.enum([
+  'cash', 'bank', 'investment', 'property', 'vehicle', 'other',
+]);
+export const liabilityTypeSchema = z.enum(['loan', 'credit-card', 'mortgage', 'other']);
+
+export const createAssetSchema = z.object({
+  name: netWorthNameSchema,
+  type: assetTypeSchema,
+  currentValue: moneySchema,
+  note: netWorthNoteSchema,
+});
+export const updateAssetSchema = createAssetSchema;
+
+export const createLiabilitySchema = z.object({
+  name: netWorthNameSchema,
+  type: liabilityTypeSchema,
+  outstandingBalance: moneySchema,
+  note: netWorthNoteSchema,
+});
+export const updateLiabilitySchema = createLiabilitySchema;
+
 export const dateFilterSchema = z
   .object({
     from: localDateSchema.optional(),
@@ -139,6 +163,12 @@ export type UpsertBudgetInput = z.infer<typeof upsertBudgetSchema>;
 export type CreateIncomeInput = z.infer<typeof createIncomeSchema>;
 export type CreateVaultInput = z.infer<typeof createVaultSchema>;
 export type CreateVaultContributionInput = z.infer<typeof createVaultContributionSchema>;
+export type AssetType = z.infer<typeof assetTypeSchema>;
+export type LiabilityType = z.infer<typeof liabilityTypeSchema>;
+export type CreateAssetInput = z.infer<typeof createAssetSchema>;
+export type UpdateAssetInput = z.infer<typeof updateAssetSchema>;
+export type CreateLiabilityInput = z.infer<typeof createLiabilitySchema>;
+export type UpdateLiabilityInput = z.infer<typeof updateLiabilitySchema>;
 
 export interface TransactionRecord {
   id: string;
@@ -183,6 +213,37 @@ export interface VaultContribution {
   vaultId: string;
   amount: string;
   createdAt: string;
+}
+
+export interface AssetRecord {
+  id: string;
+  name: string;
+  type: z.infer<typeof assetTypeSchema>;
+  currentValue: string;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LiabilityRecord {
+  id: string;
+  name: string;
+  type: z.infer<typeof liabilityTypeSchema>;
+  outstandingBalance: string;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NetWorthSummary {
+  manualAssets: string;
+  receivables: string;
+  totalOwned: string;
+  manualLiabilities: string;
+  borrowedDebt: string;
+  totalOwed: string;
+  netWorth: string;
+  status: 'positive' | 'negative' | 'zero';
 }
 
 export interface BudgetSummary {
