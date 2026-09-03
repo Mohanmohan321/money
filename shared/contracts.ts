@@ -65,9 +65,45 @@ export const createPersonRecordSchema = z.object({
 
 export const recordTypeSchema = z.enum(['transaction', 'lent', 'borrowed']);
 
-const localDateSchema = z
+function isCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+  const daysInMonth = [
+    31,
+    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return day <= daysInMonth[month - 1];
+}
+
+export const localDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must use YYYY-MM-DD');
+
+const vaultTargetDateSchema = localDateSchema
+  .refine(isCalendarDate, 'Date must be a valid calendar date');
+
+export const createVaultSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  emoji: z.string().trim().min(1).max(16),
+  targetAmount: moneySchema,
+  targetDate: vaultTargetDateSchema.optional(),
+});
+
+export const createVaultContributionSchema = z.object({ amount: moneySchema });
 
 export const dateFilterSchema = z
   .object({
@@ -101,6 +137,8 @@ export type SpendingCategory = z.infer<typeof spendingCategorySchema>;
 export type IncomeCategory = z.infer<typeof incomeCategorySchema>;
 export type UpsertBudgetInput = z.infer<typeof upsertBudgetSchema>;
 export type CreateIncomeInput = z.infer<typeof createIncomeSchema>;
+export type CreateVaultInput = z.infer<typeof createVaultSchema>;
+export type CreateVaultContributionInput = z.infer<typeof createVaultContributionSchema>;
 
 export interface TransactionRecord {
   id: string;
@@ -123,6 +161,26 @@ export interface IncomeRecord {
   id: string;
   source: string;
   category: IncomeCategory;
+  amount: string;
+  createdAt: string;
+}
+
+export interface Vault {
+  id: string;
+  name: string;
+  emoji: string;
+  targetAmount: string;
+  targetDate?: string;
+  status: 'active' | 'archived';
+  savedAmount: string;
+  progressPercent: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VaultContribution {
+  id: string;
+  vaultId: string;
   amount: string;
   createdAt: string;
 }
