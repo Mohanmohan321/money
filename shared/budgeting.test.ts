@@ -99,6 +99,16 @@ describe('budgeting domain', () => {
     }).budgetScore).toBe('99.99');
   });
 
+  it('does not round a high-magnitude score just below 33.335 percent up to 33.34', () => {
+    expect(calculateBudgetSummary({
+      salary: '999999999999999999.99',
+      additionalIncome: '999999999999999800.04',
+      spending: '0.00',
+      savings: '666699999999999933.34',
+      spendingLimit: '0.00',
+    }).budgetScore).toBe('33.33');
+  });
+
   it('returns a zero score for zero income and preserves negative shortfalls', () => {
     expect(calculateBudgetSummary({
       salary: '0.00', additionalIncome: '0.00', spending: '10.00',

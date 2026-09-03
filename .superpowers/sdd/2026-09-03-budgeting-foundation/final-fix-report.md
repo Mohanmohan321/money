@@ -173,3 +173,28 @@ The remaining near-clamp rounding case exposed that `max(16, widestOperand + 2)`
 The production build and disposable-database integration suite were not rerun for this arithmetic-only change. No entrypoint, dependency, schema, route, build configuration, or integration harness changed. The prior elevated production build passed, and the previously recorded integration boundary remains unchanged: `TEST_DATABASE_URL` is absent, so no live database acceptance is claimed.
 
 Round-3 files are limited to `shared/budgeting.ts`, `shared/budgeting.test.ts`, and this report. The exact round-3 commit SHA is reported in the post-commit handoff.
+
+## Round 4 Exact Budget Score Arithmetic
+
+Round-4 starting SHA: `6fb19b66883fa13bc23cec96ebe1148241aa20d7`
+
+The high-magnitude ratio in the fourth review demonstrated that adding finite Decimal guard digits cannot prove correct percentage rounding for every valid money pair. Budget Score no longer uses Decimal division. Salary, additional income, and savings are converted exactly to integer cents; savings cents are multiplied by 10,000 to produce a rational basis-point numerator; division and the remainder comparison perform exact half-up rounding; and the result is clamped to 0..10,000 basis points before two-decimal formatting. Decimal remains scoped to monetary sums and differences, where the existing operand-growth precision preserves exact cents.
+
+### Round-4 RED/GREEN evidence
+
+- RED: `npm.cmd test -- shared/budgeting.test.ts` exited 1 with 1 failed and 41 passed. For salary `999999999999999999.99`, additional income `999999999999999800.04`, and savings `666699999999999933.34`, the Decimal division returned `33.34` instead of `33.33`.
+- GREEN: the same focused command exited 0 with 42/42 passed. The suite retains the earlier `33.33`, `85.71`, `99.99`, 100 clamp, zero-income, maximum-income/Amount-left, and negative-shortfall regressions.
+
+### Round-4 final verification
+
+| Command | Result |
+|---|---|
+| `npm.cmd test -- shared/budgeting.test.ts` | exit 0; 1 file, 42 tests passed |
+| `npm.cmd test` | exit 0; 17 files, 179 tests passed |
+| `npm.cmd run typecheck` | exit 0; `tsc --noEmit` |
+| `npm.cmd run db:check` | exit 0; Drizzle Kit: `Everything's fine` |
+| `git diff --check` | exit 0 after this report append |
+
+The production build and disposable-database integration suite were not rerun, as directed for this arithmetic-only source/test change. No dependency, schema, route, build configuration, or integration harness changed. The prior elevated production build remains the latest build evidence; `TEST_DATABASE_URL` remains absent, so no live database acceptance is claimed.
+
+Round-4 files are limited to `shared/budgeting.ts`, `shared/budgeting.test.ts`, and this report. The exact round-4 commit SHA is reported in the post-commit handoff.
