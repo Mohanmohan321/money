@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 describe('NetWorthEditor', () => {
-  it('creates a bank asset only once, refreshes after API success, and resets after refresh', async () => {
+  it('creates a bank asset only once, resets after API success, and then refreshes', async () => {
     const created = deferred<AssetRecord>();
     const refreshed = deferred<void>();
     vi.spyOn(api, 'createAsset').mockReturnValue(created.promise);
@@ -71,10 +71,11 @@ describe('NetWorthEditor', () => {
 
     await act(async () => created.resolve(asset));
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(screen.getByLabelText('Asset name')).toHaveValue('Savings account');
+    expect(screen.getByLabelText('Asset name')).toHaveValue('');
+    expect(screen.getByRole('heading', { name: 'Savings account' })).toBeVisible();
 
     await act(async () => refreshed.resolve());
-    await waitFor(() => expect(screen.getByLabelText('Asset name')).toHaveValue(''));
+    expect(screen.getByLabelText('Asset name')).toHaveValue('');
     expect(screen.getByLabelText('Asset type')).toHaveValue('cash');
     expect(screen.getByRole('heading', { name: 'Savings account' })).toBeVisible();
   });
@@ -97,6 +98,30 @@ describe('NetWorthEditor', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText('Liability name')).toHaveValue('');
     expect(screen.getByRole('heading', { name: 'Home loan' })).toBeVisible();
+  });
+
+  it('clears successful asset and liability creates even when refresh fails', async () => {
+    const createAsset = vi.spyOn(api, 'createAsset').mockResolvedValue(asset);
+    const createLiability = vi.spyOn(api, 'createLiability').mockResolvedValue(liability);
+    const onRefresh = vi.fn().mockRejectedValue(new Error('refresh offline'));
+    const user = userEvent.setup();
+    render(<NetWorthEditor assets={[]} liabilities={[]} onRefresh={onRefresh} />);
+
+    await user.type(screen.getByLabelText('Asset name'), 'Savings account');
+    await user.type(screen.getByLabelText('Current value'), '125000');
+    await user.click(screen.getByRole('button', { name: 'Add asset' }));
+    expect(await screen.findByRole('heading', { name: 'Savings account' })).toBeVisible();
+    expect(screen.getByLabelText('Asset name')).toHaveValue('');
+
+    await user.type(screen.getByLabelText('Liability name'), 'Home loan');
+    await user.type(screen.getByLabelText('Outstanding balance'), '750000');
+    await user.click(screen.getByRole('button', { name: 'Add liability' }));
+
+    expect(await screen.findByRole('heading', { name: 'Home loan' })).toBeVisible();
+    expect(screen.getByLabelText('Liability name')).toHaveValue('');
+    expect(screen.getByRole('alert')).toHaveTextContent(/saved successfully.*refresh failed.*refresh/i);
+    expect(createAsset).toHaveBeenCalledOnce();
+    expect(createLiability).toHaveBeenCalledOnce();
   });
 
   it('updates separate asset and liability records and keeps server values intact', async () => {

@@ -79,9 +79,15 @@ export function BreakdownCalendar({ month, days }: BreakdownCalendarProps) {
               <div><dt>Expenses</dt><dd>{formatMoney(selected.spending)}</dd></div>
               <div><dt>Vault savings</dt><dd>{formatMoney(selected.savings)}</dd></div>
             </dl>
-            {selected.activity.length === 0 ? <p className="compact-empty">No income or spending recorded.</p> : (
+            {selected.activity.length === 0 ? <p className="compact-empty">No activity recorded.</p> : (
               <div className="day-detail-list">
-                {selected.activity.map((item) => (
+                {selected.activity.map((item) => item.type === 'vault-contribution' ? (
+                  <article className="day-detail-row vault-contribution" aria-label={`${item.vaultName} Vault contribution ${formatMoney(item.amount)}`} key={`${item.type}-${item.id}`}>
+                    <span className="income-label"><VaultIcon aria-hidden="true" />Vault contribution</span>
+                    <div><strong>{item.vaultEmoji && <span aria-hidden="true">{item.vaultEmoji} </span>}{item.vaultName}</strong><span>Vault savings</span></div>
+                    <b>+{formatMoney(item.amount)}</b>
+                  </article>
+                ) : (
                   <article className={`day-detail-row ${item.type}`} key={`${item.type}-${item.id}`}>
                     {item.type === 'transaction' ? <CategoryBadge category={item.category} /> : <span className="income-label"><CircleDollarSign aria-hidden="true" />Income</span>}
                     <div><strong>{item.type === 'transaction' ? item.description : item.source}</strong><span>{item.type === 'transaction' ? 'Expense' : item.category}</span></div>

@@ -90,7 +90,7 @@ describe('VaultGoals', () => {
     expect(within(region).getByRole('heading', { name: 'Old phone' })).toBeVisible();
   });
 
-  it('waits for create success before refreshing and resets only after refresh succeeds', async () => {
+  it('waits for create success, then closes before refresh completes', async () => {
     const created = deferred<Vault>();
     const refreshed = deferred<void>();
     vi.spyOn(api, 'createVault').mockReturnValue(created.promise);
@@ -116,10 +116,10 @@ describe('VaultGoals', () => {
 
     await act(async () => created.resolve(trip));
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(screen.getByLabelText('Goal name')).toHaveValue('Trip');
+    expect(screen.queryByRole('form', { name: 'Create Vault' })).not.toBeInTheDocument();
 
     await act(async () => refreshed.resolve());
-    await waitFor(() => expect(screen.queryByRole('form', { name: 'Create Vault' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('form', { name: 'Create Vault' })).not.toBeInTheDocument();
   });
 
   it('keeps create input and shows the exact API error when creation fails', async () => {
@@ -171,6 +171,23 @@ describe('VaultGoals', () => {
     await waitFor(() => expect(onContributionRefresh).toHaveBeenCalledTimes(1));
     expect(onRefresh).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByLabelText('Contribution for Trip')).not.toBeInTheDocument());
+  });
+
+  it('closes a completed contribution and reports stale data when refresh fails', async () => {
+    const contribute = vi.spyOn(api, 'contributeToVault').mockResolvedValue({
+      id: 'contribution', vaultId: 'trip', amount: '5000.00', createdAt: '2026-09-04T08:00:00.000Z',
+    });
+    const onContributionRefresh = vi.fn().mockRejectedValue(new Error('refresh offline'));
+    const user = userEvent.setup();
+    render(<VaultGoals vaults={[trip]} onRefresh={vi.fn()} onContributionRefresh={onContributionRefresh} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add money to Trip' }));
+    await user.type(screen.getByLabelText('Contribution for Trip'), '5000');
+    await user.click(screen.getByRole('button', { name: 'Add to Trip' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/added successfully.*refresh failed.*refresh/i);
+    expect(screen.queryByLabelText('Contribution for Trip')).not.toBeInTheDocument();
+    expect(contribute).toHaveBeenCalledOnce();
   });
 
   it('updates General Savings without exposing canonical identity fields and never offers archive', async () => {

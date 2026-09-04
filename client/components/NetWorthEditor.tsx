@@ -83,6 +83,7 @@ export function NetWorthEditor({ assets, liabilities, onRefresh, onClose }: NetW
   const actionLocks = useRef(new Set<string>());
   const [pending, setPending] = useState<Set<string>>(() => new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [refreshNotice, setRefreshNotice] = useState('');
   const [assetItems, setAssetItems] = useState(assets);
   const [liabilityItems, setLiabilityItems] = useState(liabilities);
   const [newAsset, setNewAsset] = useState<AssetDraft>(emptyAsset);
@@ -117,6 +118,7 @@ export function NetWorthEditor({ assets, liabilities, onRefresh, onClose }: NetW
     actionLocks.current.add(key);
     setPending((current) => new Set(current).add(key));
     setActionError(key, '');
+    if (mounted.current) setRefreshNotice('');
     try {
       await action();
     } catch (caught) {
@@ -133,15 +135,23 @@ export function NetWorthEditor({ assets, liabilities, onRefresh, onClose }: NetW
     }
   }
 
+  async function refreshAfterMutation(successMessage: string) {
+    try {
+      await onRefresh();
+    } catch {
+      if (mounted.current) setRefreshNotice(`${successMessage}; refresh failed. Use Refresh to update this view.`);
+    }
+  }
+
   function createAsset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void runAction('asset:create', async () => {
       const created = await api.createAsset(assetPayload(newAsset));
-      await onRefresh();
       if (mounted.current) {
         setAssetItems((current) => [...current, created]);
         setNewAsset(emptyAsset);
       }
+      await refreshAfterMutation('Asset saved successfully');
     }, 'Asset could not be added. Try again.');
   }
 
@@ -149,11 +159,11 @@ export function NetWorthEditor({ assets, liabilities, onRefresh, onClose }: NetW
     event.preventDefault();
     void runAction('liability:create', async () => {
       const created = await api.createLiability(liabilityPayload(newLiability));
-      await onRefresh();
       if (mounted.current) {
         setLiabilityItems((current) => [...current, created]);
         setNewLiability(emptyLiability);
       }
+      await refreshAfterMutation('Liability saved successfully');
     }, 'Liability could not be added. Try again.');
   }
 
@@ -180,11 +190,11 @@ export function NetWorthEditor({ assets, liabilities, onRefresh, onClose }: NetW
     const input: UpdateAssetInput = assetPayload(assetEdit);
     void runAction(key, async () => {
       const updated = await api.updateAsset(item.id, input);
-      await onRefresh();
       if (mounted.current) {
         setAssetItems((current) => current.map((candidate) => candidate.id === updated.id ? updated : candidate));
         setEditingAssetId((current) => current === item.id ? undefined : current);
       }
+      await refreshAfterMutation(`${item.name} saved successfully`);
     }, `${item.name} could not be updated. Try again.`);
   }
 
@@ -194,11 +204,11 @@ export function NetWorthEditor({ assets, liabilities, onRefresh, onClose }: NetW
     const input: UpdateLiabilityInput = liabilityPayload(liabilityEdit);
     void runAction(key, async () => {
       const updated = await api.updateLiability(item.id, input);
-      await onRefresh();
       if (mounted.current) {
         setLiabilityItems((current) => current.map((candidate) => candidate.id === updated.id ? updated : candidate));
         setEditingLiabilityId((current) => current === item.id ? undefined : current);
       }
+      await refreshAfterMutation(`${item.name} saved successfully`);
     }, `${item.name} could not be updated. Try again.`);
   }
 
@@ -207,8 +217,8 @@ export function NetWorthEditor({ assets, liabilities, onRefresh, onClose }: NetW
     const key = `asset:delete:${item.id}`;
     void runAction(key, async () => {
       await api.deleteAsset(item.id);
-      await onRefresh();
       if (mounted.current) setAssetItems((current) => current.filter((candidate) => candidate.id !== item.id));
+      await refreshAfterMutation(`${item.name} deleted successfully`);
     }, `${item.name} could not be deleted. Try again.`);
   }
 
@@ -217,8 +227,8 @@ export function NetWorthEditor({ assets, liabilities, onRefresh, onClose }: NetW
     const key = `liability:delete:${item.id}`;
     void runAction(key, async () => {
       await api.deleteLiability(item.id);
-      await onRefresh();
       if (mounted.current) setLiabilityItems((current) => current.filter((candidate) => candidate.id !== item.id));
+      await refreshAfterMutation(`${item.name} deleted successfully`);
     }, `${item.name} could not be deleted. Try again.`);
   }
 
@@ -229,6 +239,7 @@ export function NetWorthEditor({ assets, liabilities, onRefresh, onClose }: NetW
         {onClose && <button className="text-button" type="button" onClick={onClose}>Close editor</button>}
       </div>
       <p className="editor-note">Lent and borrowed money stay in their original records and are not editable here.</p>
+      {refreshNotice && <p className="form-warning" role="alert">{refreshNotice}</p>}
 
       <div className="worth-editor-columns">
         <section aria-labelledby={`${headingId}-assets`}>

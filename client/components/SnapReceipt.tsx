@@ -116,8 +116,12 @@ export function SnapReceipt({ onSaved, compact = false }: SnapReceiptProps) {
     setError('');
     try {
       await api.createTransaction(merchant.trim(), parsedAmount.data, category);
-      await onSaved();
       reset();
+      try {
+        await onSaved();
+      } catch {
+        setError('Receipt saved successfully; refresh failed. Use Refresh to update this view.');
+      }
     } catch (caught) {
       setState('review');
       setError(caught instanceof ApiError ? caught.message : 'This receipt could not be saved. Check your connection and try again.');

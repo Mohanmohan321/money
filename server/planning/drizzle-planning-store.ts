@@ -5,6 +5,7 @@ import { DateTime } from 'luxon';
 import { calculateBudgetSummary } from '../../shared/budgeting';
 import type {
   AnnualReportData,
+  CalendarActivity,
   CalendarDay,
   CategorySpend,
   IncomeCategory,
@@ -166,6 +167,21 @@ interface ActivityRow {
   date: string;
 }
 
+interface CalendarActivityRow {
+  [key: string]: unknown;
+  type: 'transaction' | 'income' | 'vault-contribution';
+  id: string;
+  description: string | null;
+  source: string | null;
+  category: string | null;
+  amount: string;
+  createdAt: Date | string;
+  date: string;
+  vaultId?: string | null;
+  vaultName?: string | null;
+  vaultEmoji?: string | null;
+}
+
 interface MonthRow extends TotalsRow {
   month: string;
 }
@@ -251,6 +267,23 @@ function asActivity(row: ActivityRow): RecentActivity {
   };
 }
 
+function asCalendarActivity(row: CalendarActivityRow): CalendarActivity {
+  if (row.type === 'vault-contribution') {
+    return {
+      type: 'vault-contribution',
+      id: String(row.id),
+      vaultId: String(row.vaultId),
+      vaultName: String(row.vaultName),
+      ...(row.vaultEmoji ? { vaultEmoji: String(row.vaultEmoji) } : {}),
+      amount: normalizeMoney(row.amount),
+      createdAt: row.createdAt instanceof Date
+        ? row.createdAt.toISOString()
+        : new Date(row.createdAt).toISOString(),
+    };
+  }
+  return asActivity(row as ActivityRow);
+}
+
 export function fillCategorySpending(
   rows: CategoryAggregate[],
   spending: string,
@@ -277,14 +310,14 @@ export function countConfirmedSubscriptionPayments(
 
 function dayPoints(
   rows: DayRow[],
-  activities: ActivityRow[],
+  activities: CalendarActivityRow[],
   confirmedKeys: ReadonlySet<string> = new Set(),
 ): CalendarDay[] {
-  const activityByDate = new Map<string, RecentActivity[]>();
+  const activityByDate = new Map<string, CalendarActivity[]>();
   for (const row of activities) {
     const date = String((row as ActivityRow & { date?: string }).date ?? '');
     const list = activityByDate.get(date) ?? [];
-    list.push(asActivity(row));
+    list.push(asCalendarActivity(row));
     activityByDate.set(date, list);
   }
   const subscriptionCounts = countConfirmedSubscriptionPayments(activities, confirmedKeys);
@@ -496,7 +529,10 @@ export class DrizzlePlanningStore implements PlanningStore {
       ),
       weekFrom: query.weekFromLabel,
       weekTo: query.weekToLabel,
-      week: filledDays.map(({ vaultContributionCount: _count, subscriptionPaymentCount: _subscriptions, ...day }) => day),
+      week: filledDays.map(({ vaultContributionCount: _count, subscriptionPaymentCount: _subscriptions, activity, ...day }) => ({
+        ...day,
+        activity: activity as RecentActivity[],
+      })),
       recentActivity: recentResult.map(asActivity),
     };
   }
@@ -529,7 +565,7 @@ export class DrizzlePlanningStore implements PlanningStore {
         GROUP BY 1
         ORDER BY 1
       `),
-      this.loadActivity(
+      this.loadCalendarActivity(
         query.monthRange.from,
         query.monthRange.toExclusive,
         query.timezone,
@@ -613,5 +649,42 @@ export class DrizzlePlanningStore implements PlanningStore {
       ${limit === undefined ? sql.empty() : sql`LIMIT ${limit}`}
     `);
     return result.rows as unknown as ActivityRow[];
+  }
+
+  private async loadCalendarActivity(
+    from: Date,
+    toExclusive: Date,
+    timezone: string,
+  ): Promise<CalendarActivityRow[]> {
+    const result = await this.database.execute(sql<CalendarActivityRow>`
+      WITH activity AS (
+        SELECT 'transaction'::text AS type, id, description, NULL::text AS source,
+          category, amount, created_at, NULL::uuid AS vault_id,
+          NULL::text AS vault_name, NULL::text AS vault_emoji
+        FROM transactions
+        UNION ALL
+        SELECT 'income'::text AS type, id, NULL::text AS description, source,
+          category, amount, created_at, NULL::uuid AS vault_id,
+          NULL::text AS vault_name, NULL::text AS vault_emoji
+        FROM income
+        UNION ALL
+        SELECT 'vault-contribution'::text AS type, contribution.id,
+          NULL::text AS description, NULL::text AS source, NULL::text AS category,
+          contribution.amount, contribution.created_at, contribution.vault_id,
+          vault.name AS vault_name, vault.emoji AS vault_emoji
+        FROM vault_contributions contribution
+        INNER JOIN vaults vault ON vault.id = contribution.vault_id
+      )
+      SELECT
+        type, id, description, source, category, amount,
+        created_at AS "createdAt", vault_id AS "vaultId",
+        vault_name AS "vaultName", vault_emoji AS "vaultEmoji",
+        to_char(created_at AT TIME ZONE ${timezone}, 'YYYY-MM-DD') AS date
+      FROM activity
+      WHERE created_at >= ${from.toISOString()}::timestamptz
+        AND created_at < ${toExclusive.toISOString()}::timestamptz
+      ORDER BY created_at DESC, id DESC
+    `);
+    return result.rows as unknown as CalendarActivityRow[];
   }
 }

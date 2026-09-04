@@ -305,6 +305,18 @@ export type RecentActivity =
   | (TransactionRecord & { type: 'transaction' })
   | (IncomeRecord & { type: 'income' });
 
+export interface VaultContributionActivity {
+  id: string;
+  type: 'vault-contribution';
+  vaultId: string;
+  vaultName: string;
+  vaultEmoji?: string;
+  amount: string;
+  createdAt: string;
+}
+
+export type CalendarActivity = RecentActivity | VaultContributionActivity;
+
 export interface DailyBudgetPoint {
   date: string;
   income: string;
@@ -333,10 +345,10 @@ export interface MonthBudgetBreakdown {
   budgetUsage: string;
 }
 
-export interface CalendarDay extends DailyBudgetPoint {
+export interface CalendarDay extends Omit<DailyBudgetPoint, 'activity'> {
   vaultContributionCount: number;
   subscriptionPaymentCount: number;
-  activity: RecentActivity[];
+  activity: CalendarActivity[];
 }
 
 export interface BudgetBreakdownData {

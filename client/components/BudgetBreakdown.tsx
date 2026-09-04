@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import type { BudgetBreakdownData, MonthBudgetBreakdown } from '../../shared/contracts';
@@ -14,18 +14,31 @@ export function BudgetBreakdown({ initialYear, initialMonth }: BudgetBreakdownPr
   const [year, setYear] = useState(initialYear);
   const [yearDraft, setYearDraft] = useState(initialYear);
   const [month, setMonth] = useState(initialMonth);
-  const [data, setData] = useState<BudgetBreakdownData>();
-  const [error, setError] = useState('');
+  const requestGeneration = useRef(0);
+  const requestKey = `${year}|${month}`;
+  const [result, setResult] = useState<{ key: string; data?: BudgetBreakdownData; error?: string }>({ key: '' });
+  const current = result.key === requestKey ? result : { key: requestKey };
 
   useEffect(() => {
     let active = true;
-    setError('');
+    const generation = ++requestGeneration.current;
+    setResult({ key: requestKey });
     const query = new URLSearchParams({ year, month });
-    void api.budgetBreakdown(query.toString()).then((value) => { if (active) setData(value); }).catch((caught) => {
-      if (active) setError(caught instanceof ApiError ? caught.message : 'Budgeting breakdown could not be loaded');
+    void api.budgetBreakdown(query.toString()).then((value) => {
+      if (!active || generation !== requestGeneration.current) return;
+      if (value.year !== year || value.selectedMonth !== month) {
+        setResult({ key: requestKey, error: `Budgeting breakdown response did not match ${formatMonth(month)}.` });
+        return;
+      }
+      setResult({ key: requestKey, data: value });
+    }).catch((caught) => {
+      if (active && generation === requestGeneration.current) setResult({
+        key: requestKey,
+        error: caught instanceof ApiError ? caught.message : 'Budgeting breakdown could not be loaded',
+      });
     });
     return () => { active = false; };
-  }, [year, month]);
+  }, [year, month, requestKey]);
 
   function loadYear(nextYear: string) {
     if (!/^\d{4}$/.test(nextYear)) return;
@@ -34,7 +47,7 @@ export function BudgetBreakdown({ initialYear, initialMonth }: BudgetBreakdownPr
     setMonth(`${nextYear}-${month.slice(5)}`);
   }
 
-  const monthItems = data?.months ?? Array.from({ length: 12 }, (_, index) => zeroMonth(`${year}-${String(index + 1).padStart(2, '0')}`));
+  const monthItems = current.data?.months ?? Array.from({ length: 12 }, (_, index) => zeroMonth(`${year}-${String(index + 1).padStart(2, '0')}`));
   const selectedSummary = monthItems.find((item) => item.month === month) ?? zeroMonth(month);
 
   return (
@@ -49,9 +62,9 @@ export function BudgetBreakdown({ initialYear, initialMonth }: BudgetBreakdownPr
         <input id="breakdown-year" inputMode="numeric" pattern="\d{4}" value={yearDraft} onChange={(event) => setYearDraft(event.target.value)} />
         <button className="secondary-button" type="submit">Load year</button>
       </form>
-      {error && <div className="page-state compact-state error" role="alert">{error}</div>}
-      {!data && !error && <div className="page-state compact-state">Loading breakdown…</div>}
-      {data && (
+      {current.error && <div className="page-state compact-state error" role="alert">{current.error}</div>}
+      {!current.data && !current.error && <div className="page-state compact-state">Loading breakdown…</div>}
+      {current.data && (
         <>
           <div className="month-rail" aria-label="Months in selected year">
             {monthItems.map((item) => {
@@ -78,7 +91,7 @@ export function BudgetBreakdown({ initialYear, initialMonth }: BudgetBreakdownPr
             <div className={selectedSummary.amountLeft.startsWith('-') ? 'negative' : undefined}><span>Amount left</span><strong>{formatMoney(selectedSummary.amountLeft)}</strong></div>
           </section>
           <div className="breakdown-layout">
-            <BreakdownCalendar month={month} days={data.days} />
+            <BreakdownCalendar month={month} days={current.data.days} />
           </div>
         </>
       )}

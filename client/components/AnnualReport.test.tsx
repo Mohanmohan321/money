@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AnnualReportData } from '../../shared/contracts';
+import { api } from '../api';
 import { AnnualReport } from './AnnualReport';
 
 const months = Array.from({ length: 12 }, (_, index) => ({
@@ -22,7 +23,7 @@ const fixture: AnnualReportData = {
   highestSpendingMonth: '2026-09', bestSavingMonth: '2026-01',
 };
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function installApi(data: AnnualReportData = fixture) {
   const paths: string[] = [];
@@ -64,5 +65,17 @@ describe('AnnualReport', () => {
     expect(screen.getAllByText('No activity recorded')).toHaveLength(2);
     await user.click(screen.getByRole('button', { name: 'Previous year' }));
     await waitFor(() => expect(paths.some((path) => path.includes('year=2025'))).toBe(true));
+  });
+
+  it('rejects a response whose year does not match the selected year', async () => {
+    vi.spyOn(api, 'annualReport').mockResolvedValueOnce(fixture).mockResolvedValueOnce(fixture);
+    const user = userEvent.setup();
+    render(<AnnualReport initialYear="2026" />);
+    expect(await screen.findByText('60,000.00')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Previous year' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/did not match.*2025/i);
+    expect(screen.queryByText('60,000.00')).not.toBeInTheDocument();
   });
 });

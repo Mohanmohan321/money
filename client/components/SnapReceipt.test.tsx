@@ -88,6 +88,25 @@ describe('SnapReceipt', () => {
     expect(screen.getByRole('button', { name: 'Confirm spending' })).toBeEnabled();
   });
 
+  it('clears a saved review and reports a stale view when refresh fails', async () => {
+    recognizeReceiptMock.mockResolvedValue({ text: 'Shop\nTOTAL 12.00', confidence: 90 });
+    const create = vi.spyOn(api, 'createTransaction').mockResolvedValue({
+      id: 'tx', description: 'Shop', amount: '12.00', category: 'other', createdAt: '2026-09-04T08:00:00.000Z',
+    });
+    const onSaved = vi.fn().mockRejectedValue(new Error('refresh offline'));
+    const user = userEvent.setup();
+    render(<SnapReceipt onSaved={onSaved} />);
+
+    await user.upload(screen.getByLabelText('Receipt image'), receiptFile);
+    await user.click(screen.getByRole('button', { name: 'Scan receipt' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm spending' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/saved successfully.*refresh failed.*refresh/i);
+    expect(screen.queryByLabelText('Merchant')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Scan receipt' })).toBeDisabled();
+    expect(create).toHaveBeenCalledOnce();
+  });
+
   it('discards review and revokes previews on replacement and unmount', async () => {
     recognizeReceiptMock.mockResolvedValue({ text: 'Shop\nTOTAL 12.00', confidence: 90 });
     const user = userEvent.setup();

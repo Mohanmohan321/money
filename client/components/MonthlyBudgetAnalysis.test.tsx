@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { MonthlyAnalysisData, SpendingCategory } from '../../shared/contracts';
+import { api } from '../api';
 import { MonthlyBudgetAnalysis } from './MonthlyBudgetAnalysis';
 
 const categories: SpendingCategory[] = [
@@ -30,7 +31,13 @@ const fixture: MonthlyAnalysisData = {
   recentActivity: [],
 };
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 function installApi() {
   const paths: string[] = [];
@@ -78,5 +85,26 @@ describe('MonthlyBudgetAnalysis', () => {
     await waitFor(() => expect(paths.filter((path) => path.includes('month=2026-09')).length).toBeGreaterThan(1));
     await user.click(screen.getByRole('button', { name: 'Next week' }));
     await waitFor(() => expect(paths.some((path) => path.includes('week=2026-09-07'))).toBe(true));
+  });
+
+  it('hides the old month while loading and ignores an out-of-order response', async () => {
+    const august = deferred<MonthlyAnalysisData>();
+    vi.spyOn(api, 'monthlyAnalysis')
+      .mockResolvedValueOnce(fixture)
+      .mockReturnValueOnce(august.promise)
+      .mockResolvedValueOnce({ ...fixture, summary: { ...fixture.summary, spending: '21000.00' } });
+    const user = userEvent.setup();
+    render(<MonthlyBudgetAnalysis initialMonth="2026-09" />);
+    expect(await screen.findByText('20,000.00')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(await screen.findByText('Loading monthly budget…')).toBeVisible();
+    expect(screen.queryByText('20,000.00')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(await screen.findByText('21,000.00')).toBeVisible();
+
+    await act(async () => august.resolve({ ...fixture, month: '2026-08', summary: { ...fixture.summary, spending: '8000.00' } }));
+    expect(screen.getByText('21,000.00')).toBeVisible();
+    expect(screen.queryByText('8,000.00')).not.toBeInTheDocument();
   });
 });

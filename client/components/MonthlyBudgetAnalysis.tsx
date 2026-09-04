@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import type { MonthlyAnalysisData } from '../../shared/contracts';
@@ -27,19 +27,32 @@ function shiftDate(value: string, days: number): string {
 export function MonthlyBudgetAnalysis({ initialMonth }: MonthlyBudgetAnalysisProps) {
   const [month, setMonth] = useState(initialMonth);
   const [weekAnchor, setWeekAnchor] = useState<string>();
-  const [data, setData] = useState<MonthlyAnalysisData>();
-  const [error, setError] = useState('');
+  const requestGeneration = useRef(0);
+  const requestKey = `${month}|${weekAnchor ?? ''}`;
+  const [result, setResult] = useState<{ key: string; data?: MonthlyAnalysisData; error?: string }>({ key: '' });
+  const current = result.key === requestKey ? result : { key: requestKey };
 
   useEffect(() => {
     let active = true;
-    setError('');
+    const generation = ++requestGeneration.current;
+    setResult({ key: requestKey });
     const query = new URLSearchParams({ month });
     if (weekAnchor) query.set('week', weekAnchor);
-    void api.monthlyAnalysis(query.toString()).then((value) => { if (active) setData(value); }).catch((caught) => {
-      if (active) setError(caught instanceof ApiError ? caught.message : 'Monthly analysis could not be loaded');
+    void api.monthlyAnalysis(query.toString()).then((value) => {
+      if (!active || generation !== requestGeneration.current) return;
+      if (value.month !== month) {
+        setResult({ key: requestKey, error: `Monthly analysis response did not match ${formatMonth(month)}.` });
+        return;
+      }
+      setResult({ key: requestKey, data: value });
+    }).catch((caught) => {
+      if (active && generation === requestGeneration.current) setResult({
+        key: requestKey,
+        error: caught instanceof ApiError ? caught.message : 'Monthly analysis could not be loaded',
+      });
     });
     return () => { active = false; };
-  }, [month, weekAnchor]);
+  }, [month, requestKey, weekAnchor]);
 
   function navigateMonth(delta: number) {
     setMonth((value) => shiftMonth(value, delta));
@@ -53,9 +66,11 @@ export function MonthlyBudgetAnalysis({ initialMonth }: MonthlyBudgetAnalysisPro
         <div><p className="eyebrow">Monthly Budget</p><h2>{formatMonth(month)}</h2></div>
         <button className="icon-button" type="button" aria-label="Next month" onClick={() => navigateMonth(1)}><ChevronRight aria-hidden="true" /></button>
       </header>
-      {error && <div className="page-state compact-state error" role="alert">{error}</div>}
-      {!data && !error && <div className="page-state compact-state">Loading monthly budget…</div>}
-      {data && (
+      {current.error && <div className="page-state compact-state error" role="alert">{current.error}</div>}
+      {!current.data && !current.error && <div className="page-state compact-state">Loading monthly budget…</div>}
+      {current.data && (() => {
+        const data = current.data;
+        return (
         <>
           <section className="analysis-hero" aria-label="Monthly spending summary">
             <div><span>Total spending</span><strong>{formatMoney(data.summary.spending)}</strong></div>
@@ -81,7 +96,8 @@ export function MonthlyBudgetAnalysis({ initialMonth }: MonthlyBudgetAnalysisPro
             onNextWeek={() => setWeekAnchor(shiftDate(data.weekFrom, 7))}
           />
         </>
-      )}
+        );
+      })()}
     </div>
   );
 }

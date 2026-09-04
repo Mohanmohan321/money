@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import type { AnnualReportData } from '../../shared/contracts';
@@ -11,14 +11,26 @@ interface AnnualReportProps { initialYear: string; }
 export function AnnualReport({ initialYear }: AnnualReportProps) {
   const [year, setYear] = useState(initialYear);
   const [yearDraft, setYearDraft] = useState(initialYear);
-  const [data, setData] = useState<AnnualReportData>();
-  const [error, setError] = useState('');
+  const requestGeneration = useRef(0);
+  const [result, setResult] = useState<{ year: string; data?: AnnualReportData; error?: string }>({ year: '' });
+  const current = result.year === year ? result : { year };
 
   useEffect(() => {
     let active = true;
-    setError('');
-    void api.annualReport(new URLSearchParams({ year }).toString()).then((value) => { if (active) setData(value); }).catch((caught) => {
-      if (active) setError(caught instanceof ApiError ? caught.message : 'Annual report could not be loaded');
+    const generation = ++requestGeneration.current;
+    setResult({ year });
+    void api.annualReport(new URLSearchParams({ year }).toString()).then((value) => {
+      if (!active || generation !== requestGeneration.current) return;
+      if (value.year !== year) {
+        setResult({ year, error: `Annual report response did not match ${year}.` });
+        return;
+      }
+      setResult({ year, data: value });
+    }).catch((caught) => {
+      if (active && generation === requestGeneration.current) setResult({
+        year,
+        error: caught instanceof ApiError ? caught.message : 'Annual report could not be loaded',
+      });
     });
     return () => { active = false; };
   }, [year]);
@@ -41,9 +53,11 @@ export function AnnualReport({ initialYear }: AnnualReportProps) {
         <input id="annual-year" inputMode="numeric" pattern="\d{4}" value={yearDraft} onChange={(event) => setYearDraft(event.target.value)} />
         <button className="secondary-button" type="submit">Load year</button>
       </form>
-      {error && <div className="page-state compact-state error" role="alert">{error}</div>}
-      {!data && !error && <div className="page-state compact-state">Loading annual report…</div>}
-      {data && (
+      {current.error && <div className="page-state compact-state error" role="alert">{current.error}</div>}
+      {!current.data && !current.error && <div className="page-state compact-state">Loading annual report…</div>}
+      {current.data && (() => {
+        const data = current.data;
+        return (
         <>
           <dl className="annual-metrics">
             {[
@@ -63,7 +77,8 @@ export function AnnualReport({ initialYear }: AnnualReportProps) {
             <IncomeSourcePieChart data={data.incomeBySource} />
           </div>
         </>
-      )}
+        );
+      })()}
     </div>
   );
 }

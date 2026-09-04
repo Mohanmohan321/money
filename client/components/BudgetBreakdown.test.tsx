@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { BudgetBreakdownData } from '../../shared/contracts';
+import { api } from '../api';
 import { BudgetBreakdown } from './BudgetBreakdown';
 
 const months = Array.from({ length: 12 }, (_, index) => ({
@@ -20,17 +21,29 @@ const fixture: BudgetBreakdownData = {
     activity: [
       { id: 'i1', type: 'income', source: 'Freelance site', category: 'freelance', amount: '5000.00', createdAt: '2026-09-03T08:00:00Z' },
       { id: 't1', type: 'transaction', description: 'Swiggy dinner', category: 'food', amount: '1200.00', createdAt: '2026-09-03T12:00:00Z' },
+      { id: 'v1', type: 'vault-contribution', vaultId: 'vault-1', vaultName: 'Trip', vaultEmoji: '✈️', amount: '500.00', createdAt: '2026-09-03T14:00:00Z' },
     ],
   }],
 };
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function installApi() {
   const paths: string[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-    paths.push(String(input));
-    return new Response(JSON.stringify({ success: true, data: fixture }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const path = String(input);
+    paths.push(path);
+    const url = new URL(path, 'http://localhost');
+    const year = url.searchParams.get('year') ?? fixture.year;
+    const selectedMonth = url.searchParams.get('month') ?? fixture.selectedMonth;
+    const data: BudgetBreakdownData = {
+      ...fixture,
+      year,
+      selectedMonth,
+      months: fixture.months.map((item) => ({ ...item, month: `${year}-${item.month.slice(5)}` })),
+      days: selectedMonth === fixture.selectedMonth ? fixture.days : [],
+    };
+    return new Response(JSON.stringify({ success: true, data }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }));
   return paths;
 }
@@ -61,6 +74,9 @@ describe('BudgetBreakdown', () => {
     const details = screen.getByRole('region', { name: '3 September details' });
     expect(within(details).getByText('Freelance site')).toBeVisible();
     expect(within(details).getByText('Swiggy dinner')).toBeVisible();
+    expect(within(details).getByText('Trip')).toBeVisible();
+    expect(within(details).getByText('Vault contribution')).toBeVisible();
+    expect(within(screen.getByRole('article', { name: /Trip Vault contribution 500\.00/i })).getByText(/500\.00/)).toBeVisible();
     expect(within(details).getByTestId('category-food')).toBeVisible();
     expect(screen.getByTestId('breakdown-summary').compareDocumentPosition(calendar)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(calendar.compareDocumentPosition(details)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -79,5 +95,20 @@ describe('BudgetBreakdown', () => {
     await user.type(screen.getByLabelText('Report year'), '2024');
     await user.click(screen.getByRole('button', { name: 'Load year' }));
     expect(await screen.findByRole('button', { name: /29 February 2024/i })).toBeVisible();
+  });
+
+  it('does not retain prior-year figures when the next request fails', async () => {
+    vi.spyOn(api, 'budgetBreakdown')
+      .mockResolvedValueOnce(fixture)
+      .mockRejectedValueOnce(new Error('offline'));
+    const user = userEvent.setup();
+    render(<BudgetBreakdown initialYear="2026" initialMonth="2026-09" />);
+    expect(await screen.findByTestId('breakdown-summary')).toHaveTextContent('5,000.00');
+
+    await user.click(screen.getByRole('button', { name: 'Previous year' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be loaded/i);
+    expect(screen.queryByTestId('breakdown-summary')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /September 2026 budget/i })).not.toBeInTheDocument();
   });
 });

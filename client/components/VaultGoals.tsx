@@ -49,7 +49,9 @@ export function VaultGoals({ vaults, onRefresh, onContributionRefresh }: VaultGo
   const mounted = useRef(true);
   const actionLocks = useRef(new Set<string>());
   const [pending, setPending] = useState<Set<string>>(() => new Set());
+  const [successfulActions, setSuccessfulActions] = useState<Set<string>>(() => new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [refreshNotice, setRefreshNotice] = useState('');
   const [creating, setCreating] = useState(false);
   const [createDraft, setCreateDraft] = useState<VaultDraft>(emptyDraft);
   const [contributingTo, setContributingTo] = useState<string>();
@@ -79,6 +81,7 @@ export function VaultGoals({ vaults, onRefresh, onContributionRefresh }: VaultGo
     actionLocks.current.add(key);
     setPending((current) => new Set(current).add(key));
     setActionError(key, '');
+    if (mounted.current) setRefreshNotice('');
     try {
       await action();
     } catch (caught) {
@@ -95,6 +98,14 @@ export function VaultGoals({ vaults, onRefresh, onContributionRefresh }: VaultGo
     }
   }
 
+  async function refreshAfterMutation(refresh: () => Promise<void>, successMessage: string) {
+    try {
+      await refresh();
+    } catch {
+      if (mounted.current) setRefreshNotice(`${successMessage}; refresh failed. Use Refresh to update this view.`);
+    }
+  }
+
   function openCreate() {
     setCreateDraft(emptyDraft);
     setActionError('create', '');
@@ -105,11 +116,11 @@ export function VaultGoals({ vaults, onRefresh, onContributionRefresh }: VaultGo
     event.preventDefault();
     void runAction('create', async () => {
       await api.createVault(payloadFromDraft(createDraft));
-      await onRefresh();
       if (mounted.current) {
         setCreateDraft(emptyDraft);
         setCreating(false);
       }
+      await refreshAfterMutation(onRefresh, 'Vault saved successfully');
     }, 'Vault could not be created. Try again.');
   }
 
@@ -124,11 +135,11 @@ export function VaultGoals({ vaults, onRefresh, onContributionRefresh }: VaultGo
     const key = `contribute:${vault.id}`;
     void runAction(key, async () => {
       await api.contributeToVault(vault.id, { amount: contributionAmounts[vault.id] ?? '' });
-      await (onContributionRefresh ?? onRefresh)();
       if (mounted.current) {
         setContributionAmounts((current) => ({ ...current, [vault.id]: '' }));
         setContributingTo((current) => current === vault.id ? undefined : current);
       }
+      await refreshAfterMutation(onContributionRefresh ?? onRefresh, `Money added successfully to ${vault.name}`);
     }, `Money could not be added to ${vault.name}. Try again.`);
   }
 
@@ -153,8 +164,8 @@ export function VaultGoals({ vaults, onRefresh, onContributionRefresh }: VaultGo
     });
     void runAction(key, async () => {
       await api.updateVault(vault.id, input);
-      await onRefresh();
       if (mounted.current) setEditingId((current) => current === vault.id ? undefined : current);
+      await refreshAfterMutation(onRefresh, `${vault.name} saved successfully`);
     }, `${vault.name} could not be updated. Try again.`);
   }
 
@@ -162,7 +173,8 @@ export function VaultGoals({ vaults, onRefresh, onContributionRefresh }: VaultGo
     const key = `archive:${vault.id}`;
     void runAction(key, async () => {
       await api.archiveVault(vault.id);
-      await onRefresh();
+      if (mounted.current) setSuccessfulActions((current) => new Set(current).add(key));
+      await refreshAfterMutation(onRefresh, `${vault.name} archived successfully`);
     }, `${vault.name} could not be archived. Try again.`);
   }
 
@@ -218,11 +230,11 @@ export function VaultGoals({ vaults, onRefresh, onContributionRefresh }: VaultGo
               <button
                 className="text-button danger-action"
                 type="button"
-                disabled={pending.has(archiveKey)}
+                disabled={pending.has(archiveKey) || successfulActions.has(archiveKey)}
                 onClick={() => archiveVault(vault)}
               >
                 <Archive aria-hidden="true" />
-                {pending.has(archiveKey) ? `Archiving ${vault.name}…` : `Archive ${vault.name}`}
+                {pending.has(archiveKey) ? `Archiving ${vault.name}…` : successfulActions.has(archiveKey) ? `Archived ${vault.name}` : `Archive ${vault.name}`}
               </button>
             )}
           </div>
@@ -284,6 +296,7 @@ export function VaultGoals({ vaults, onRefresh, onContributionRefresh }: VaultGo
         <div><p className="eyebrow">Savings, with a purpose</p><h2 id={headingId}>Vault goals</h2></div>
         <button className="secondary-button compact-button" type="button" onClick={openCreate}>New Vault</button>
       </div>
+      {refreshNotice && <p className="form-warning" role="alert">{refreshNotice}</p>}
 
       {creating && (
         <form className="vault-create-form" aria-label="Create Vault" onSubmit={createVault}>
