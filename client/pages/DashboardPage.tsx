@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, ReceiptText } from 'lucide-react';
 
 import type { DashboardData, MonthlyAnalysisData, NetWorthSummary, UpsertBudgetInput, Vault } from '../../shared/contracts';
@@ -27,9 +27,14 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [hasPartialFailure, setHasPartialFailure] = useState(false);
   const [month] = useState(localCurrentMonth);
+  const mounted = useRef(false);
+  const groupedRequestGeneration = useRef(0);
+  const monthlyRequestGeneration = useRef(0);
   const monthlyQuery = new URLSearchParams({ month }).toString();
 
   const loadDashboard = useCallback(async () => {
+    const groupedGeneration = ++groupedRequestGeneration.current;
+    const monthlyGeneration = ++monthlyRequestGeneration.current;
     setLoading(true);
     const results = await Promise.allSettled([
       api.dashboard(),
@@ -38,22 +43,37 @@ export function DashboardPage() {
       api.vaults(),
     ] as const);
 
+    if (!mounted.current || groupedGeneration !== groupedRequestGeneration.current) return;
+    const monthlyResultIsCurrent = monthlyGeneration === monthlyRequestGeneration.current;
     if (results[0].status === 'fulfilled') setData(results[0].value);
-    if (results[1].status === 'fulfilled') setMonthly(results[1].value);
+    if (results[1].status === 'fulfilled' && monthlyResultIsCurrent) {
+      setMonthly(results[1].value);
+    }
     if (results[2].status === 'fulfilled') setNetWorth(results[2].value);
     if (results[3].status === 'fulfilled') setVaults(results[3].value.items);
-    setHasPartialFailure(results.some((result) => result.status === 'rejected'));
+    setHasPartialFailure(results.some((result, index) => (
+      result.status === 'rejected' && (index !== 1 || monthlyResultIsCurrent)
+    )));
     setLoading(false);
   }, [monthlyQuery]);
 
   useEffect(() => {
+    mounted.current = true;
     void loadDashboard();
+    return () => {
+      mounted.current = false;
+      groupedRequestGeneration.current += 1;
+      monthlyRequestGeneration.current += 1;
+    };
   }, [loadDashboard]);
 
   async function saveBudget(input: UpsertBudgetInput) {
     await api.saveBudget(month, input);
+    const monthlyGeneration = ++monthlyRequestGeneration.current;
     const refreshed = await api.monthlyAnalysis(monthlyQuery);
-    setMonthly(refreshed);
+    if (mounted.current && monthlyGeneration === monthlyRequestGeneration.current) {
+      setMonthly(refreshed);
+    }
   }
 
   if (loading && !data && !monthly && !netWorth) {

@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 
+const fixedNow = new Date('2026-09-01T12:00:00.000Z');
+
 const dashboard = {
   timezone: 'Asia/Kolkata',
   today: {
@@ -171,6 +173,8 @@ function installApi(
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(fixedNow);
   localStorage.clear();
   window.history.pushState({}, '', '/');
 });
@@ -178,6 +182,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('mobile money manager', () => {
@@ -224,7 +229,7 @@ describe('mobile money manager', () => {
   });
 
   it('places exact budget, net worth, and recent activity before today', async () => {
-    installApi(true);
+    const backend = installApi(true);
     render(<App />);
 
     const budgetHeading = await screen.findByRole('heading', { name: 'Monthly budget' });
@@ -261,6 +266,9 @@ describe('mobile money manager', () => {
     expect(within(recent).getByRole('link', { name: 'See all' })).toHaveAttribute('href', '/history');
     expect(within(recent).queryAllByRole('img')).toHaveLength(0);
     expect(within(recent).queryByText('Sixth record')).not.toBeInTheDocument();
+    expect(backend.calls).toContainEqual({
+      path: '/api/analysis/monthly?month=2026-09', method: 'GET', body: undefined,
+    });
   });
 
   it('edits the suggested budget inline and refreshes only monthly analysis after save', async () => {
