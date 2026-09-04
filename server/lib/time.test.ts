@@ -64,6 +64,14 @@ describe('planning ranges', () => {
       from: new Date('2026-03-02T05:00:00.000Z'),
       toExclusive: new Date('2026-03-09T04:00:00.000Z'),
     });
+    expect(yearRange('2026', 'America/New_York')).toEqual({
+      from: new Date('2026-01-01T05:00:00.000Z'),
+      toExclusive: new Date('2027-01-01T05:00:00.000Z'),
+    });
+    expect(weekRangeContaining('2026-11-01', 'America/New_York')).toEqual({
+      from: new Date('2026-10-26T04:00:00.000Z'),
+      toExclusive: new Date('2026-11-02T05:00:00.000Z'),
+    });
   });
 
   it.each([

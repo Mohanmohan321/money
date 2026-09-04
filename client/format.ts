@@ -49,9 +49,12 @@ export function formatMonth(month: string, locale?: Intl.LocalesArgument): strin
   if (!match) throw new TypeError('Month must use YYYY-MM');
 
   const [, year, monthNumber] = match;
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(Number(year), Number(monthNumber) - 1, 1);
   return new Intl.DateTimeFormat(locale, {
     month: 'long',
     year: 'numeric',
     timeZone: 'UTC',
-  }).format(new Date(Date.UTC(Number(year), Number(monthNumber) - 1, 1)));
+  }).format(date);
 }

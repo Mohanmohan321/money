@@ -2,6 +2,16 @@
 
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+  Clapperboard,
+  Coffee,
+  Hamburger,
+  HeartPulse,
+  Plane,
+  ReceiptText,
+  ShoppingBag,
+  WalletCards,
+} from 'lucide-react';
 
 import type { SpendingCategory } from '../../shared/contracts';
 import { CategoryBadge, categoryPresentation } from './CategoryBadge';
@@ -19,6 +29,17 @@ const categories: ReadonlyArray<readonly [SpendingCategory, string]> = [
   ['other', 'Other'],
 ];
 
+const categoryIcons = [
+  ['food', Hamburger],
+  ['travel', Plane],
+  ['shopping', ShoppingBag],
+  ['coffee', Coffee],
+  ['entertainment', Clapperboard],
+  ['health', HeartPulse],
+  ['bills', ReceiptText],
+  ['other', WalletCards],
+] as const;
+
 describe('CategoryBadge', () => {
   it.each(categories)('renders %s as an icon and accessible visible label', (category, label) => {
     const { container } = render(<CategoryBadge category={category} />);
@@ -34,5 +55,9 @@ describe('CategoryBadge', () => {
 
   it('provides one presentation entry for every spending category', () => {
     expect(Object.keys(categoryPresentation)).toEqual(categories.map(([category]) => category));
+  });
+
+  it.each(categoryIcons)('maps %s to its specified Lucide icon', (category, icon) => {
+    expect(categoryPresentation[category].icon).toBe(icon);
   });
 });

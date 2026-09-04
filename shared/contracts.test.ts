@@ -119,6 +119,7 @@ describe('planning query contracts', () => {
   it.each([
     ['invalid month', monthlyAnalysisQuerySchema, { month: '2026-13' }],
     ['impossible week date', monthlyAnalysisQuerySchema, { month: '2026-09', week: '2026-02-30' }],
+    ['non-leap February date', monthlyAnalysisQuerySchema, { month: '2026-02', week: '2026-02-29' }],
     ['short year', annualAnalysisQuerySchema, { year: '26' }],
     ['malformed year', annualAnalysisQuerySchema, { year: '20x6' }],
     ['month outside selected year', budgetBreakdownQuerySchema, { year: '2026', month: '2025-09' }],

@@ -1,48 +1,57 @@
-import { useEffect, useState } from 'react';
-import { BarChart3 } from 'lucide-react';
+import { useRef, useState } from 'react';
 
-import type { AnalyticsData } from '../../shared/contracts';
-import { api, ApiError } from '../api';
-import { MovementChart } from '../components/MovementChart';
+import { AnnualReport } from '../components/AnnualReport';
+import { BudgetBreakdown } from '../components/BudgetBreakdown';
+import { MonthlyBudgetAnalysis } from '../components/MonthlyBudgetAnalysis';
 
-type Period = AnalyticsData['period'];
+const tabs = ['Monthly Budget', 'Budgeting Breakdown', 'Annual Report'] as const;
+type AnalysisTab = typeof tabs[number];
+
+function localMonth() {
+  const now = new Date();
+  return `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
 
 export function AnalyticsPage() {
-  const [period, setPeriod] = useState<Period>('month');
-  const [data, setData] = useState<AnalyticsData>();
-  const [error, setError] = useState('');
+  const initialMonth = useRef(localMonth()).current;
+  const initialYear = initialMonth.slice(0, 4);
+  const [selectedTab, setSelectedTab] = useState<AnalysisTab>('Monthly Budget');
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  useEffect(() => {
-    setError('');
-    void api.analytics(new URLSearchParams({ period }).toString()).then(setData).catch((caught) => {
-      setError(caught instanceof ApiError ? caught.message : 'Analytics could not be loaded');
-    });
-  }, [period]);
+  function selectByIndex(index: number) {
+    const wrapped = (index + tabs.length) % tabs.length;
+    setSelectedTab(tabs[wrapped]);
+    tabRefs.current[wrapped]?.focus();
+  }
 
   return (
     <div className="page analytics-page">
-      <header className="page-header analytics-header">
-        <div><p className="eyebrow">Patterns, not accounting</p><h1>Analytics</h1></div>
-        <label className="period-picker">Group by<select value={period} onChange={(event) => setPeriod(event.target.value as Period)}><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option><option value="year">Year</option></select></label>
-      </header>
-      {error && <div className="page-state error" role="alert">{error}</div>}
-      {!data ? <div className="page-state">Building the view…</div> : (
-        <>
-          <section className="insight-panel analytics-chart">
-            <div className="section-heading"><div><p className="eyebrow">{data.from} — {data.to}</p><h2>Money movement</h2></div><BarChart3 aria-hidden="true" /></div>
-            <MovementChart points={data.movement} />
-          </section>
-          <section className="analysis-grid" aria-label="Category analysis">
-            <article className="analysis-card transaction"><p>Transactions</p><strong>{data.transactions.totalAmount}</strong><span>{data.transactions.count} records · avg {data.transactions.averageAmount}</span></article>
-            <article className="analysis-card lent"><p>Money lent</p><strong>{data.lending.totalAmount}</strong><span>{data.lending.count} records · avg {data.lending.averageAmount}</span></article>
-            <article className="analysis-card borrowed"><p>Money borrowed</p><strong>{data.borrowing.totalAmount}</strong><span>{data.borrowing.count} records · avg {data.borrowing.averageAmount}</span></article>
-          </section>
-          <section className="people-grid">
-            <article className="people-panel"><h2>Lending by person</h2>{data.lendingByPerson.length === 0 ? <p>No lending in this period.</p> : data.lendingByPerson.map((person) => <div className="person-row" key={person.personName}><span>{person.personName}<small>{person.numberOfLoans} loans</small></span><strong>{person.totalAmount}</strong></div>)}</article>
-            <article className="people-panel"><h2>Borrowing by person</h2>{data.borrowingByPerson.length === 0 ? <p>No borrowing in this period.</p> : data.borrowingByPerson.map((person) => <div className="person-row" key={person.personName}><span>{person.personName}<small>{person.numberOfBorrowings} records</small></span><strong>{person.totalAmount}</strong></div>)}</article>
-          </section>
-        </>
-      )}
+      <header className="page-header analytics-header"><div><p className="eyebrow">Plan, inspect, adjust</p><h1>Analysis</h1></div></header>
+      <div className="analysis-tabs" role="tablist" aria-label="Analysis views">
+        {tabs.map((tab, index) => (
+          <button
+            id={`analysis-tab-${index}`}
+            role="tab"
+            type="button"
+            aria-selected={selectedTab === tab}
+            aria-controls={`analysis-panel-${index}`}
+            tabIndex={selectedTab === tab ? 0 : -1}
+            ref={(node) => { tabRefs.current[index] = node; }}
+            onClick={() => setSelectedTab(tab)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowRight') { event.preventDefault(); selectByIndex(index + 1); }
+              if (event.key === 'ArrowLeft') { event.preventDefault(); selectByIndex(index - 1); }
+            }}
+          >{tab}</button>
+        ))}
+      </div>
+      {tabs.map((tab, index) => selectedTab === tab && (
+        <div id={`analysis-panel-${index}`} role="tabpanel" aria-labelledby={`analysis-tab-${index}`} tabIndex={0} key={tab}>
+          {tab === 'Monthly Budget' && <MonthlyBudgetAnalysis initialMonth={initialMonth} />}
+          {tab === 'Budgeting Breakdown' && <BudgetBreakdown initialYear={initialYear} initialMonth={initialMonth} />}
+          {tab === 'Annual Report' && <AnnualReport initialYear={initialYear} />}
+        </div>
+      ))}
     </div>
   );
 }

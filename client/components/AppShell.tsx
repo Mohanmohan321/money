@@ -5,7 +5,7 @@ const navigation = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/add', label: 'Add', icon: Plus },
   { to: '/history', label: 'History', icon: History },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/analytics', label: 'Analysis', icon: BarChart3 },
 ];
 
 interface AppShellProps {

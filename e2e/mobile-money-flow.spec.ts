@@ -83,3 +83,36 @@ test('wrong password produces a clear error without entering the app', async ({ 
   await expect(page.getByRole('alert')).toHaveText('Invalid password');
   await expect(page.getByRole('heading', { name: "Today's snapshot" })).toHaveCount(0);
 });
+
+test('budgeting surfaces keep mobile order and expose desktop report equivalents', async ({ page }, testInfo) => {
+  await unlock(page);
+
+  if (testInfo.project.name === 'mobile-chromium') {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const headings = ['Monthly budget', 'Net worth', 'Recent transactions', 'Vault Goals', "Today's snapshot"];
+    const positions = await Promise.all(headings.map(async (name) => page.getByRole('heading', { name }).evaluate((element) => element.getBoundingClientRect().top + window.scrollY)));
+    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+    await page.getByRole('link', { name: 'Analysis' }).click();
+    const monthly = page.getByRole('tab', { name: 'Monthly Budget' });
+    await monthly.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Budgeting Breakdown' })).toBeFocused();
+    await expect(page.getByRole('tabpanel')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    return;
+  }
+
+  await page.getByRole('link', { name: 'Analysis' }).click();
+  await page.getByRole('tab', { name: 'Budgeting Breakdown' }).click();
+  await expect(page.locator('.breakdown-layout')).toBeVisible();
+  const columns = await page.locator('.breakdown-layout').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length);
+  expect(columns).toBe(2);
+
+  await page.getByRole('tab', { name: 'Annual Report' }).click();
+  await expect(page.getByRole('table', { name: 'Monthly income and spending data' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Monthly savings data' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Spending by category data' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Income by source data' })).toBeVisible();
+});

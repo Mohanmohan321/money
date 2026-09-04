@@ -26,6 +26,7 @@ describe('display formatters', () => {
 
   it('formats a validated month in the requested locale', () => {
     expect(formatMonth('2026-09', 'en-IN')).toBe('September 2026');
+    expect(formatMonth('0099-01', 'en-US')).toBe('January 99');
     expect(() => formatMonth('2026-13', 'en-IN')).toThrow('YYYY-MM');
   });
 });

@@ -45,7 +45,7 @@ const monthlyAnalysis = {
     income: '55000.00', spending: '9000.00', savings: '10000.00',
     amountLeft: '36000.00', budgetScore: '18.18', spendingRemaining: '1000.00',
   },
-  categories: [],
+  categories: [{ category: 'food' as const, amount: '9000.00', percentage: '100.00' }],
   weekFrom: '2026-08-31',
   weekTo: '2026-09-06',
   week: [],
@@ -86,6 +86,24 @@ const netWorth = {
   totalOwed: '100000.00',
   netWorth: '220000.00',
   status: 'positive' as const,
+};
+
+const budgetBreakdown = {
+  year: '2026',
+  selectedMonth: '2026-09',
+  months: Array.from({ length: 12 }, (_, index) => ({
+    month: `2026-${String(index + 1).padStart(2, '0')}`,
+    income: '55000.00', spending: '9000.00', savings: '10000.00',
+    amountLeft: '36000.00', budgetUsage: '90.00',
+  })),
+  days: [],
+};
+
+const annualReport = {
+  year: '2026', summary: monthlyAnalysis.summary, months: budgetBreakdown.months,
+  spendingByCategory: [{ category: 'food' as const, amount: '9000.00', percentage: '100.00' }],
+  incomeBySource: [{ source: 'Salary', amount: '55000.00', percentage: '100.00' }],
+  highestSpendingMonth: '2026-09', bestSavingMonth: '2026-09',
 };
 
 function jsonResponse(data: unknown, status = 200) {
@@ -139,6 +157,12 @@ function installApi(
         ? { ...monthlyAnalysis, summary: { ...monthlyAnalysis.summary, income: options.refreshedIncome } }
         : monthlyAnalysis;
       return jsonResponse({ success: true, data });
+    }
+    if (path.startsWith('/api/analysis/breakdown?')) {
+      return jsonResponse({ success: true, data: budgetBreakdown });
+    }
+    if (path.startsWith('/api/analysis/annual?')) {
+      return jsonResponse({ success: true, data: annualReport });
     }
     if (path === '/api/net-worth') {
       if (options.fail === 'net-worth') {
@@ -479,5 +503,31 @@ describe('mobile money manager', () => {
     await waitFor(() => {
       expect(backend.calls.filter((call) => call.path === '/api/dashboard')).toHaveLength(2);
     });
+  });
+
+  it('keeps the Analysis route and exposes three roving, labelled tabs', async () => {
+    installApi(true);
+    window.history.pushState({}, '', '/analytics');
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect((await screen.findAllByRole('link', { name: 'Analysis' })).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'Analysis' })).toBeVisible();
+    const monthly = screen.getByRole('tab', { name: 'Monthly Budget' });
+    const breakdown = screen.getByRole('tab', { name: 'Budgeting Breakdown' });
+    const annual = screen.getByRole('tab', { name: 'Annual Report' });
+    expect(monthly).toHaveAttribute('aria-selected', 'true');
+    expect(monthly).toHaveAttribute('tabindex', '0');
+    expect(breakdown).toHaveAttribute('tabindex', '-1');
+    expect(annual).toHaveAttribute('tabindex', '-1');
+    monthly.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(breakdown).toHaveFocus();
+    expect(breakdown).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('heading', { name: '2026 budgeting breakdown' })).toBeVisible();
+    for (const label of document.querySelectorAll('label')) expect(label.control).not.toBeNull();
+    await user.keyboard('{ArrowRight}');
+    expect(annual).toHaveFocus();
+    expect(await screen.findByRole('heading', { name: '2026 annual report' })).toBeVisible();
   });
 });

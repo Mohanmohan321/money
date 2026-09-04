@@ -1,6 +1,6 @@
 # Personal Money Manager
 
-Ledgerly is a private, single-user, mobile-first money logger. It keeps normal transactions, money lent, and money borrowed separate while presenting them together in history, dashboard summaries, and analytics.
+Ledgerly is a private, single-user, mobile-first budgeting workspace. It keeps spending, income, Vault savings, money lent, and money borrowed semantically separate while presenting them together in the Dashboard, History, and Analysis views.
 
 The React client never talks to Neon directly. Express owns authentication, validation, timestamps, database access, and every authoritative financial aggregate.
 
@@ -62,6 +62,8 @@ npm.cmd run db:migrate
 ```
 
 There is no SQLite, in-memory, or mock-data runtime fallback. Missing Neon configuration produces a clear startup error.
+
+Migration `0001_budgeting_foundation.sql` adds monthly budgets, income, spending categories, Vaults and contributions, assets, and liabilities. It backfills existing transactions to the `other` category before making the category required. Apply it before using the budgeting Dashboard or Analysis endpoints.
 
 ## Run locally
 
@@ -133,7 +135,7 @@ All `/api` routes except authentication require the signed `money_session` HTTP-
 | POST | `/api/auth/login` | Authenticate with `{ "password": "..." }` |
 | POST | `/api/auth/logout` | Revoke the current session |
 | GET | `/api/auth/me` | Return `{ authenticated }` |
-| POST | `/api/transactions` | Create from `{ description, amount }` |
+| POST | `/api/transactions` | Create from `{ description, amount, category? }` |
 | GET | `/api/transactions?from=&to=` | List transactions newest-first |
 | GET | `/api/transactions/:id` | Read one transaction |
 | DELETE | `/api/transactions/:id` | Delete one transaction |
@@ -148,10 +150,37 @@ All `/api` routes except authentication require the signed `money_session` HTTP-
 | GET | `/api/history?type=&from=&to=&limit=&offset=` | Unified chronological feed |
 | GET | `/api/dashboard` | Today, current week, and current month aggregates |
 | GET | `/api/analytics?period=day\|week\|month\|year&from=&to=` | Movement, statistics, and person aggregates |
+| GET, PUT | `/api/budgets/:month` | Read or replace a `YYYY-MM` budget plan |
+| POST, GET | `/api/income` | Create or list additional income |
+| GET, PUT, DELETE | `/api/income/:id` | Read, replace, or delete one income record |
+| POST, GET | `/api/vaults` | Create or list Vault goals |
+| GET, PUT, DELETE | `/api/vaults/:id` | Read, update, or delete an eligible Vault |
+| POST | `/api/vaults/:id/contributions` | Add an immutable savings contribution |
+| POST | `/api/vaults/:id/archive` | Archive a user-created Vault |
+| POST, GET | `/api/assets` | Create or list manual assets |
+| PUT, DELETE | `/api/assets/:id` | Update or delete a manual asset |
+| POST, GET | `/api/liabilities` | Create or list manual liabilities |
+| PUT, DELETE | `/api/liabilities/:id` | Update or delete a manual liability |
+| GET | `/api/net-worth` | Server-computed owned, owed, and net-worth totals |
+| GET | `/api/analysis/monthly?month=&week=` | Monthly summary, categories, and Monday-Sunday activity |
+| GET | `/api/analysis/breakdown?year=&month=` | 12-month rail, calendar totals, and day activity |
+| GET | `/api/analysis/annual?year=` | Annual metrics, chart series, shares, and extrema |
 
 Create requests ignore unknown client fields and never accept an authoritative ID or timestamp. PostgreSQL generates UUIDs and `created_at`. Amounts must be positive plain decimal strings with no exponent, no more than 18 integer digits, and no more than two fractional digits. Responses return money with exactly two fractional digits.
 
 Date filters use `YYYY-MM-DD` in `APP_TIMEZONE`; `to` is inclusive. API timestamps are ISO 8601 UTC strings. Analytics defaults are 30 days, 12 weeks, 12 months, or 5 years depending on the selected grouping.
+
+## Budgeting semantics
+
+- Income is the saved monthly salary plus persisted additional-income records.
+- Spending includes categorized transactions only; lending, borrowing, Vault transfers, assets, and liabilities are excluded.
+- Savings is the sum of confirmed Vault contributions. The canonical General Savings Vault is included and cannot be renamed, archived, or deleted.
+- Amount left is `income - spending - savings`. Negative values remain visible as shortfalls.
+- Budget Score is the server-provided `savings / income * 100`, clamped from 0 to 100; zero income produces zero.
+- Net Worth is `total owned - total owed`. Owned includes manual assets and outstanding lending; owed includes manual liabilities and outstanding borrowing. Vault savings remain owned money.
+- Spending categories are Food, Travel, Shopping, Coffee, Entertainment, Health, Bills, and Other. The server's deterministic suggestion is used only when the user does not choose a category; persisted user choices stay authoritative.
+
+The `/analytics` bookmark remains valid, while the visible navigation label is **Analysis**. Its Monthly Budget, Budgeting Breakdown, and Annual Report tabs render only API-provided financial totals. Browser number conversion is limited to chart coordinates and progress geometry; displayed amounts come from decimal-string contracts.
 
 ## Security behavior
 
@@ -174,10 +203,11 @@ npm.cmd run build
 npm.cmd run db:check
 ```
 
-Database integration tests require a separate disposable Neon branch or database whose schema has already been migrated:
+Database integration tests require a separate disposable Neon branch or database whose schema has already been migrated, plus an explicit disposable-data guard:
 
 ```powershell
 $env:TEST_DATABASE_URL='postgresql://...'
+$env:TEST_DATABASE_DISPOSABLE='true'
 npm.cmd run test:integration
 ```
 
@@ -190,4 +220,4 @@ npx.cmd playwright install chromium firefox
 npm.cmd run test:e2e
 ```
 
-Playwright covers mobile Chromium and desktop Firefox, real cookie authentication, automatic timestamps, all three create flows, unified history, cleanup, and wrong-password handling.
+Playwright is configured for mobile Chromium and desktop Firefox. With a migrated disposable runtime database, it covers real cookie authentication, automatic timestamps, all three original create flows, unified history and cleanup, mobile Dashboard ordering/no-overflow/tab access, and desktop Breakdown/report-table layout. These live checks are separate from the database-free component suite.
