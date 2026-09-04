@@ -8,6 +8,17 @@ import { App } from './App';
 
 const fixedNow = new Date('2026-09-01T12:00:00.000Z');
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((innerResolve) => { resolve = innerResolve; });
+  return { promise, resolve };
+}
+
 const dashboard = {
   timezone: 'Asia/Kolkata',
   today: {
@@ -86,7 +97,13 @@ function jsonResponse(data: unknown, status = 200) {
 
 function installApi(
   initiallyAuthenticated = false,
-  options: { fail?: string; refreshedIncome?: string; zeroWorth?: boolean } = {},
+  options: {
+    fail?: string;
+    refreshedIncome?: string;
+    zeroWorth?: boolean;
+    transactionResponse?: Promise<Response>;
+    onTransactionStart?: () => void;
+  } = {},
 ) {
   let authenticated = initiallyAuthenticated;
   const calls: Array<{ path: string; method: string; body?: unknown }> = [];
@@ -160,6 +177,8 @@ function installApi(
       }, 201);
     }
     if (path === '/api/transactions' && method === 'POST') {
+      options.onTransactionStart?.();
+      if (options.transactionResponse) return options.transactionResponse;
       return jsonResponse({
         success: true,
         data: {
@@ -308,6 +327,53 @@ describe('mobile money manager', () => {
     expect(screen.getByLabelText('Category')).toHaveValue('other');
     expect(screen.getAllByRole('tab').every((tab) => tab.hasAttribute('aria-controls'))).toBe(true);
     expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Transaction');
+  });
+
+  it('locks the original entry mode until its pending save settles', async () => {
+    const transactionResponse = deferred<Response>();
+    let attemptModeSwitch = () => {};
+    const backend = installApi(true, {
+      transactionResponse: transactionResponse.promise,
+      onTransactionStart: () => attemptModeSwitch(),
+    });
+    window.history.pushState({}, '', '/add');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(await screen.findByLabelText('Description'), 'Swiggy dinner');
+    await user.type(screen.getByLabelText('Amount'), '100');
+    const incomeTab = screen.getByRole('tab', { name: 'Income' });
+    attemptModeSwitch = () => incomeTab.click();
+    await user.click(screen.getByRole('button', { name: 'Save transaction' }));
+
+    expect(await screen.findByRole('button', { name: 'Saving…' })).toBeDisabled();
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(4);
+    for (const tab of tabs) expect(tab).toBeDisabled();
+
+    await user.click(incomeTab);
+    expect(screen.getByLabelText('Description')).toHaveValue('Swiggy dinner');
+    expect(screen.queryByLabelText('Income source')).not.toBeInTheDocument();
+
+    transactionResponse.resolve(jsonResponse({
+      success: true,
+      data: {
+        id: 'transaction-created', description: 'Swiggy dinner', category: 'food',
+        amount: '100.00', createdAt: '2026-09-02T10:00:00Z',
+      },
+    }, 201));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Transaction saved');
+    expect(screen.getByLabelText('Description')).toHaveValue('');
+    expect(screen.getByLabelText('Category')).toHaveValue('other');
+    await waitFor(() => {
+      for (const tab of screen.getAllByRole('tab')) expect(tab).toBeEnabled();
+    });
+    expect(backend.calls.filter(({ path }) => path === '/api/transactions')).toHaveLength(1);
+
+    await user.click(screen.getByRole('tab', { name: 'Income' }));
+    expect(screen.getByLabelText('Income source')).toBeVisible();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('logs out through the backend and returns to the lock screen', async () => {

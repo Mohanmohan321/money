@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, CircleDollarSign, ReceiptText } from 'lucide-react';
 
 import type { IncomeCategory, SpendingCategory } from '../../shared/contracts';
@@ -33,6 +33,7 @@ export function AddPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const selected = modes[mode];
   const SelectedIcon = selected.icon;
 
@@ -45,7 +46,7 @@ export function AddPage() {
   }
 
   function chooseMode(nextMode: EntryMode) {
-    if (nextMode === mode) return;
+    if (submittingRef.current || nextMode === mode) return;
     setMode(nextMode);
     resetEntry();
     setMessage('');
@@ -61,6 +62,8 @@ export function AddPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setMessage('');
     setError('');
     setSubmitting(true);
@@ -76,6 +79,7 @@ export function AddPage() {
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'This record could not be saved');
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -94,6 +98,7 @@ export function AddPage() {
               role="tab"
               aria-controls="entry-panel"
               aria-selected={mode === key}
+              disabled={submitting}
               onClick={() => chooseMode(key)}
               className={key}
             >
