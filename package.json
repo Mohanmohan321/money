@@ -13,7 +13,7 @@
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "tsup server/index.ts --format esm --platform node --target node20 --out-dir dist/server --clean --no-splitting",
-    "start": "node dist/server/index.js",
+    "start": "npm run db:migrate && node dist/server/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
