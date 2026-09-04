@@ -1,8 +1,10 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, CircleDollarSign, ReceiptText, Trash2 } from 'lucide-react';
 
-import type { HistoryItem } from '../../shared/contracts';
+import type { HistoryItem, IncomeCategory } from '../../shared/contracts';
 import { api, ApiError } from '../api';
+import { CategoryBadge } from '../components/CategoryBadge';
+import { formatMoney } from '../format';
 
 function itemLabel(item: HistoryItem): string {
   if (item.type === 'transaction') return item.description;
@@ -10,12 +12,17 @@ function itemLabel(item: HistoryItem): string {
   return item.personName;
 }
 
-function itemCategory(item: HistoryItem): string | undefined {
-  if (item.type !== 'transaction' && item.type !== 'income') return undefined;
-  return item.category
-    .split('-')
-    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
-    .join(' ');
+const incomeCategoryLabels: Record<IncomeCategory, string> = {
+  bonus: 'Bonus',
+  freelance: 'Freelance',
+  refund: 'Refund',
+  other: 'Other',
+};
+
+function displayAmount(item: HistoryItem): string {
+  if (item.type === 'income') return formatMoney(`+${item.amount}`);
+  if (item.type === 'transaction') return formatMoney(`-${item.amount}`);
+  return formatMoney(item.amount);
 }
 
 const icons = {
@@ -89,12 +96,18 @@ export function HistoryPage() {
         <section className="history-list" aria-label="Financial history">
           {items.map((item) => {
             const Icon = icons[item.type];
-            const category = itemCategory(item);
             return (
               <article className={`history-item ${item.type}`} key={`${item.type}-${item.id}`}>
                 <span className="history-icon"><Icon aria-hidden="true" /></span>
-                <div><strong>{itemLabel(item)}</strong><span>{typeLabels[item.type]} · {category ? `${category} · ` : ''}{new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(item.createdAt))}</span></div>
-                <b>{item.amount}</b>
+                <div className="history-item-copy">
+                  <strong>{itemLabel(item)}</strong>
+                  {item.type === 'transaction' && <CategoryBadge category={item.category} />}
+                  <span className="history-meta">
+                    {typeLabels[item.type]} · {item.type === 'income' ? `${incomeCategoryLabels[item.category]} · ` : ''}
+                    <time dateTime={item.createdAt}>{new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(item.createdAt))}</time>
+                  </span>
+                </div>
+                <b className={`history-amount ${item.type === 'income' ? 'income-amount' : item.type === 'transaction' ? 'spending-amount' : ''}`}>{displayAmount(item)}</b>
                 <button type="button" className="icon-button subtle" aria-label={`Delete ${itemLabel(item)}`} onClick={() => void remove(item)}><Trash2 aria-hidden="true" /></button>
               </article>
             );

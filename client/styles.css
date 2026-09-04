@@ -181,24 +181,29 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
 .partial-failure { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; margin: 0.7rem 0 1rem; padding: 0.7rem 0.8rem 0.7rem 1rem; border: 1px solid #e1c1a1; border-left: 0.3rem solid var(--lent); border-radius: 0.8rem; background: var(--lent-soft); color: #75420f; font-size: 0.78rem; }
 .partial-failure .text-button { flex: 0 0 auto; color: #75420f; }
 
-.entry-tabs { display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }
+.entry-tabs { display: grid; grid-template-columns: repeat(4, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }
 .entry-tabs button { min-height: 5.4rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.55rem 0.3rem; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 0.7rem; }
 .entry-tabs button:last-child { border-right: 0; }
 .entry-tabs button svg { width: 1.25rem; }
 .entry-tabs button[aria-selected='true'] { color: var(--ink); font-weight: 750; }
 .entry-tabs button.transaction[aria-selected='true'] { background: var(--transaction-soft); color: var(--transaction); }
+.entry-tabs button.income[aria-selected='true'] { background: var(--income-soft); color: var(--income); }
 .entry-tabs button.lent[aria-selected='true'] { background: var(--lent-soft); color: #9f5c18; }
 .entry-tabs button.borrowed[aria-selected='true'] { background: var(--borrowed-soft); color: var(--borrowed); }
 .entry-form { margin-top: 1rem; padding: 1.2rem; border: 1px solid var(--line); border-radius: 1.15rem; background: var(--paper); }
 .entry-form-intro { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 1.7rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
 .entry-form-intro svg { width: 1.25rem; }
 .entry-form.transaction .entry-form-intro { color: var(--transaction); }
+.entry-form.income .entry-form-intro { color: var(--income); }
 .entry-form.lent .entry-form-intro { color: var(--lent); }
 .entry-form.borrowed .entry-form-intro { color: var(--borrowed); }
 .entry-form-intro p { margin: 0 0 0.15rem; color: var(--ink); font-weight: 750; }
 .entry-form-intro small { color: var(--muted); }
 .entry-form > label { display: block; margin: 1.1rem 0 0.45rem; color: var(--ink); }
-.entry-form > input, .history-filters input, .history-filters select, .period-picker select { width: 100%; min-height: 3.25rem; padding: 0.75rem 0.85rem; border: 1px solid var(--line); border-radius: 0.7rem; outline: 0; background: #f5f8f6; color: var(--ink); }
+.entry-form > input, .entry-form > select, .history-filters input, .history-filters select, .period-picker select { width: 100%; min-height: 3.25rem; padding: 0.75rem 0.85rem; border: 1px solid var(--line); border-radius: 0.7rem; outline: 0; background: #f5f8f6; color: var(--ink); }
+.entry-form > input:focus, .entry-form > select:focus { border-color: var(--transaction); }
+.entry-form.income > input:focus, .entry-form.income > select:focus { border-color: var(--income); }
+.category-choice { min-height: 2.25rem; display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; margin-top: 0.45rem; color: var(--muted); font-size: 0.7rem; }
 #entry-amount { font-family: 'IBM Plex Mono', monospace; font-size: 1.35rem; }
 .primary-button, .secondary-button { width: 100%; min-height: 3.3rem; display: inline-grid; place-items: center; border: 0; border-radius: 0.75rem; background: var(--ink); color: white; font-weight: 760; }
 .entry-form .primary-button { margin-top: 1.4rem; }
@@ -223,7 +228,12 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
 .history-item div strong, .history-item div span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-item div strong { font-size: 0.9rem; }
 .history-item div span { margin-top: 0.2rem; color: var(--muted); font-size: 0.67rem; }
+.history-item .category-badge, .history-item .category-badge span { display: inline-flex; overflow: visible; white-space: nowrap; }
+.history-item .category-badge { margin-top: 0.35rem; }
+.history-item .category-badge span { margin-top: 0; color: currentColor; font-size: inherit; }
 .history-item b { font-size: 0.84rem; }
+.history-item .income-amount { color: var(--income); }
+.history-item .spending-amount { color: var(--transaction); }
 .empty-state { min-height: 18rem; display: grid; place-content: center; justify-items: center; padding: 2rem; border: 1px dashed var(--line); color: var(--muted); text-align: center; }
 .empty-state svg { margin-bottom: 1rem; color: var(--transaction); }
 .empty-state h2 { margin-bottom: 0.5rem; color: var(--ink); }

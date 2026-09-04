@@ -150,6 +150,24 @@ function installApi(
         data: { id: '1', personName: body.personName, amount: '50.00', createdAt: '2026-09-02T10:00:00Z' },
       }, 201);
     }
+    if (path === '/api/income' && method === 'POST') {
+      return jsonResponse({
+        success: true,
+        data: {
+          id: 'income-created', source: body.source, category: body.category,
+          amount: '5000.00', createdAt: '2026-09-02T10:00:00Z',
+        },
+      }, 201);
+    }
+    if (path === '/api/transactions' && method === 'POST') {
+      return jsonResponse({
+        success: true,
+        data: {
+          id: 'transaction-created', description: body.description, category: body.category,
+          amount: '100.00', createdAt: '2026-09-02T10:00:00Z',
+        },
+      }, 201);
+    }
     if (path.startsWith('/api/history')) {
       return jsonResponse({ success: true, data: { items: [], total: 0, limit: 50, offset: 0 } });
     }
@@ -216,6 +234,80 @@ describe('mobile money manager', () => {
     expect(api.calls.find((call) => call.path === '/api/lent' && call.method === 'POST')?.body)
       .toEqual({ personName: 'Maya', amount: '50' });
     expect(screen.queryByLabelText(/date|time/i)).not.toBeInTheDocument();
+  });
+
+  it('adds income with its source and category, then clears the successful entry', async () => {
+    const backend = installApi(true);
+    window.history.pushState({}, '', '/add');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('tab', { name: 'Income' }));
+    await user.type(screen.getByLabelText('Income source'), 'Freelance site');
+    await user.selectOptions(screen.getByLabelText('Income category'), 'freelance');
+    await user.type(screen.getByLabelText('Amount'), '5000');
+    await user.click(screen.getByRole('button', { name: 'Save income' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Income saved');
+    expect(backend.calls.find(({ path }) => path === '/api/income')?.body)
+      .toEqual({ source: 'Freelance site', category: 'freelance', amount: '5000' });
+    expect(screen.getByLabelText('Income source')).toHaveValue('');
+    expect(screen.getByLabelText('Income category')).toHaveValue('other');
+    expect(screen.getByLabelText('Amount')).toHaveValue('');
+    expect(screen.queryByLabelText(/date|time/i)).not.toBeInTheDocument();
+  });
+
+  it('updates a spending suggestion until the user overrides it', async () => {
+    const backend = installApi(true);
+    window.history.pushState({}, '', '/add');
+    const user = userEvent.setup();
+    render(<App />);
+
+    const description = await screen.findByLabelText('Description');
+    const category = screen.getByLabelText('Category');
+    await user.type(description, 'Swiggy dinner');
+    expect(category).toHaveValue('food');
+    expect(screen.getByTestId('category-food')).toHaveTextContent('Food');
+
+    await user.clear(description);
+    await user.type(description, 'Uber ride');
+    expect(category).toHaveValue('travel');
+
+    await user.selectOptions(category, 'shopping');
+    await user.clear(description);
+    await user.type(description, 'Coffee at Starbucks');
+    expect(category).toHaveValue('shopping');
+    expect(screen.getByTestId('category-shopping')).toHaveTextContent('Shopping');
+
+    await user.type(screen.getByLabelText('Amount'), '100');
+    await user.click(screen.getByRole('button', { name: 'Save transaction' }));
+
+    expect(backend.calls.find(({ path }) => path === '/api/transactions')?.body)
+      .toEqual({ description: 'Coffee at Starbucks', amount: '100', category: 'shopping' });
+    expect(screen.getByLabelText('Description')).toHaveValue('');
+    expect(screen.getByLabelText('Category')).toHaveValue('other');
+  });
+
+  it('resets category state when changing entry modes so choices cannot leak', async () => {
+    installApi(true);
+    window.history.pushState({}, '', '/add');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(await screen.findByLabelText('Description'), 'Swiggy dinner');
+    await user.selectOptions(screen.getByLabelText('Category'), 'shopping');
+    await user.click(screen.getByRole('tab', { name: 'Income' }));
+    await user.selectOptions(screen.getByLabelText('Income category'), 'bonus');
+    await user.click(screen.getByRole('tab', { name: 'Money lent' }));
+    await user.click(screen.getByRole('tab', { name: 'Income' }));
+    expect(screen.getByLabelText('Income source')).toHaveValue('');
+    expect(screen.getByLabelText('Income category')).toHaveValue('other');
+
+    await user.click(screen.getByRole('tab', { name: 'Transaction' }));
+    expect(screen.getByLabelText('Description')).toHaveValue('');
+    expect(screen.getByLabelText('Category')).toHaveValue('other');
+    expect(screen.getAllByRole('tab').every((tab) => tab.hasAttribute('aria-controls'))).toBe(true);
+    expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Transaction');
   });
 
   it('logs out through the backend and returns to the lock screen', async () => {
