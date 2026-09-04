@@ -6,7 +6,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
+  AssetRecord,
   DashboardData,
+  LiabilityRecord,
   MonthlyAnalysisData,
   NetWorthSummary,
   Vault,
@@ -56,6 +58,23 @@ const netWorth: NetWorthSummary = {
   totalOwed: '100000.00',
   netWorth: '220000.00',
   status: 'positive',
+};
+
+const trip: Vault = {
+  id: 'trip', name: 'Trip', emoji: '✈️', isGeneral: false,
+  targetAmount: '60000.00', targetDate: '2027-01-15', status: 'active',
+  savedAmount: '15000.00', progressPercent: '25.00',
+  createdAt: '2026-09-01T08:00:00.000Z', updatedAt: '2026-09-02T08:00:00.000Z',
+};
+
+const asset: AssetRecord = {
+  id: 'asset-1', name: 'Savings account', type: 'bank', currentValue: '125000.00',
+  createdAt: '2026-09-01T08:00:00.000Z', updatedAt: '2026-09-02T08:00:00.000Z',
+};
+
+const liability: LiabilityRecord = {
+  id: 'liability-1', name: 'Home loan', type: 'mortgage', outstandingBalance: '750000.00',
+  createdAt: '2026-09-01T08:00:00.000Z', updatedAt: '2026-09-02T08:00:00.000Z',
 };
 
 interface Deferred<T> {
@@ -234,5 +253,127 @@ describe('DashboardPage request ordering', () => {
 
     expect(itemsRead).toBe(0);
     expect(consoleError).not.toHaveBeenCalled();
+  });
+});
+
+describe('DashboardPage Vault and net worth controls', () => {
+  function installDashboardSpies() {
+    vi.spyOn(api, 'dashboard').mockResolvedValue(dashboard);
+    vi.spyOn(api, 'monthlyAnalysis').mockResolvedValue(monthly);
+    vi.spyOn(api, 'netWorth').mockResolvedValue(netWorth);
+    vi.spyOn(api, 'vaults').mockResolvedValue({ items: [trip] });
+  }
+
+  it('places Vault goals after recent transactions and refreshes Vaults plus monthly analysis after contribution', async () => {
+    installDashboardSpies();
+    vi.spyOn(api, 'contributeToVault').mockResolvedValue({
+      id: 'contribution', vaultId: 'trip', amount: '5000.00', createdAt: '2026-09-04T08:00:00.000Z',
+    });
+    const user = userEvent.setup();
+    renderDashboard();
+
+    const recent = await screen.findByRole('heading', { name: 'Recent transactions' });
+    const vaults = screen.getByRole('heading', { name: 'Vault goals' });
+    const today = screen.getByRole('heading', { name: "Today's snapshot" });
+    expect(recent.compareDocumentPosition(vaults)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(vaults.compareDocumentPosition(today)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    await user.click(screen.getByRole('button', { name: 'Add money to Trip' }));
+    await user.type(screen.getByLabelText('Contribution for Trip'), '5000');
+    await user.click(screen.getByRole('button', { name: 'Add to Trip' }));
+
+    await waitFor(() => expect(api.vaults).toHaveBeenCalledTimes(2));
+    expect(api.monthlyAnalysis).toHaveBeenCalledTimes(2);
+    expect(api.netWorth).toHaveBeenCalledTimes(1);
+    expect(api.dashboard).toHaveBeenCalledTimes(1);
+    const contributionOrder = vi.mocked(api.contributeToVault).mock.invocationCallOrder[0];
+    const vaultRefreshOrder = vi.mocked(api.vaults).mock.invocationCallOrder[1];
+    expect(contributionOrder).toBeLessThan(vaultRefreshOrder);
+  });
+
+  it('refreshes only Vaults after creating a goal', async () => {
+    installDashboardSpies();
+    vi.spyOn(api, 'createVault').mockResolvedValue(trip);
+    const user = userEvent.setup();
+    renderDashboard();
+
+    await user.click(await screen.findByRole('button', { name: 'New Vault' }));
+    await user.type(screen.getByLabelText('Goal name'), 'Phone');
+    await user.type(screen.getByLabelText('Goal emoji'), '📱');
+    await user.type(screen.getByLabelText('Target amount'), '80000');
+    await user.click(screen.getByRole('button', { name: 'Create Vault' }));
+
+    await waitFor(() => expect(api.vaults).toHaveBeenCalledTimes(2));
+    expect(api.monthlyAnalysis).toHaveBeenCalledTimes(1);
+    expect(api.netWorth).toHaveBeenCalledTimes(1);
+    expect(api.dashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens manual records from Net Worth and refreshes Net Worth only after an asset mutation', async () => {
+    installDashboardSpies();
+    vi.spyOn(api, 'assets').mockResolvedValue({ items: [asset] });
+    vi.spyOn(api, 'liabilities').mockResolvedValue({ items: [liability] });
+    vi.spyOn(api, 'createAsset').mockResolvedValue({ ...asset, id: 'asset-2', name: 'Cash' });
+    const user = userEvent.setup();
+    renderDashboard();
+
+    await user.click(await screen.findByRole('button', { name: 'Manage assets and liabilities' }));
+    expect(await screen.findByRole('heading', { name: 'Assets' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Liabilities' })).toBeVisible();
+    expect(api.assets).toHaveBeenCalledTimes(1);
+    expect(api.liabilities).toHaveBeenCalledTimes(1);
+
+    await user.type(screen.getByLabelText('Asset name'), 'Cash');
+    await user.type(screen.getByLabelText('Current value'), '5000');
+    await user.click(screen.getByRole('button', { name: 'Add asset' }));
+
+    await waitFor(() => expect(api.netWorth).toHaveBeenCalledTimes(2));
+    expect(api.assets).toHaveBeenCalledTimes(1);
+    expect(api.liabilities).toHaveBeenCalledTimes(1);
+    expect(api.vaults).toHaveBeenCalledTimes(1);
+    expect(api.monthlyAnalysis).toHaveBeenCalledTimes(1);
+    expect(api.dashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a grouped retry overwrite a newer contribution refresh', async () => {
+    const retry = {
+      dashboard: deferred<DashboardData>(),
+      monthly: deferred<MonthlyAnalysisData>(),
+      netWorth: deferred<NetWorthSummary>(),
+      vaults: deferred<{ items: Vault[] }>(),
+    };
+    const refreshedTrip = { ...trip, savedAmount: '20000.00', progressPercent: '33.33' };
+    vi.spyOn(api, 'dashboard').mockResolvedValueOnce(dashboard).mockReturnValueOnce(retry.dashboard.promise);
+    vi.spyOn(api, 'monthlyAnalysis')
+      .mockResolvedValueOnce(monthly)
+      .mockReturnValueOnce(retry.monthly.promise)
+      .mockResolvedValueOnce({ ...monthly, summary: { ...monthly.summary, savings: '15000.00' } });
+    vi.spyOn(api, 'netWorth').mockRejectedValueOnce(new Error('initial failure')).mockReturnValueOnce(retry.netWorth.promise);
+    vi.spyOn(api, 'vaults')
+      .mockResolvedValueOnce({ items: [trip] })
+      .mockReturnValueOnce(retry.vaults.promise)
+      .mockResolvedValueOnce({ items: [refreshedTrip] });
+    vi.spyOn(api, 'contributeToVault').mockResolvedValue({
+      id: 'contribution', vaultId: 'trip', amount: '5000.00', createdAt: '2026-09-04T08:00:00.000Z',
+    });
+    const user = userEvent.setup();
+    renderDashboard();
+
+    await user.click(await screen.findByRole('button', { name: 'Refresh and try again' }));
+    await user.click(screen.getByRole('button', { name: 'Add money to Trip' }));
+    await user.type(screen.getByLabelText('Contribution for Trip'), '5000');
+    await user.click(screen.getByRole('button', { name: 'Add to Trip' }));
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Vault goals' })).toHaveTextContent('20,000.00'));
+
+    await act(async () => {
+      retry.dashboard.resolve(dashboardWithTransactions('222.00'));
+      retry.monthly.resolve(monthly);
+      retry.netWorth.resolve(netWorth);
+      retry.vaults.resolve({ items: [trip] });
+    });
+    await act(async () => Promise.resolve());
+
+    expect(screen.getByRole('region', { name: 'Vault goals' })).toHaveTextContent('20,000.00');
+    expect(screen.getByRole('region', { name: 'Vault goals' })).not.toHaveTextContent('15,000.00');
   });
 });

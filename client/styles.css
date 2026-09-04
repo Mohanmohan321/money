@@ -25,7 +25,7 @@
 * { box-sizing: border-box; }
 html { min-width: 320px; min-height: 100%; background: var(--canvas); }
 body { min-width: 320px; min-height: 100vh; margin: 0; background: var(--canvas); }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 button:disabled { cursor: wait; opacity: 0.65; }
@@ -159,6 +159,58 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
 .worth-columns dl > div { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.72rem 0; border-bottom: 1px solid var(--line); }
 .worth-columns dl > div:last-child { border-bottom: 0; font-weight: 750; }
 .worth-columns dd { overflow-wrap: anywhere; text-align: right; }
+.worth-manage-button { margin-top: 0.85rem; }
+
+.vault-goals .section-heading, .net-worth-editor .section-heading { align-items: flex-start; flex-wrap: wrap; }
+.vault-grid { display: grid; gap: 0.8rem; }
+.vault-card { position: relative; overflow: hidden; padding: 1rem; border: 1px solid var(--line); border-radius: 1rem; background: #f5f8f6; }
+.vault-card.general { border-color: #a8c9bd; background: linear-gradient(145deg, #f6fbf8, #e7f1ec); }
+.vault-card.archived { opacity: 0.78; }
+.vault-card-header { display: flex; align-items: center; gap: 0.75rem; }
+.vault-card-header h3, .worth-editor-columns h3, .worth-item h4 { margin: 0; color: var(--ink); font-family: 'Bricolage Grotesque Variable', 'Segoe UI', sans-serif; }
+.vault-card-header p, .worth-item-heading span { margin: 0.16rem 0 0; color: var(--muted); font-size: 0.7rem; }
+.vault-emoji { width: 3.25rem; height: 3.25rem; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid rgba(33, 122, 120, 0.18); border-radius: 1rem; background: var(--paper); box-shadow: 0 8px 22px rgba(31, 50, 41, 0.08); font-size: 1.75rem; }
+.vault-saved { display: grid; gap: 0.2rem; margin: 1rem 0 0.75rem; }
+.vault-saved span, .vault-progress-copy span { color: var(--muted); font-size: 0.7rem; font-weight: 700; }
+.vault-saved strong { overflow-wrap: anywhere; color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 1.35rem; letter-spacing: -0.045em; }
+.vault-progress-block { display: grid; gap: 0.5rem; }
+.vault-progress-copy { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+.vault-progress-copy strong { color: var(--transaction); font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; }
+.vault-progress-block progress { width: 100%; height: 0.65rem; overflow: hidden; border: 0; border-radius: 999px; accent-color: var(--transaction); background: #dbe4df; }
+.vault-progress-block progress::-webkit-progress-bar { border-radius: 999px; background: #dbe4df; }
+.vault-progress-block progress::-webkit-progress-value { border-radius: 999px; background: var(--transaction); }
+.vault-progress-block progress::-moz-progress-bar { border-radius: 999px; background: var(--transaction); }
+.vault-date { display: flex; align-items: center; gap: 0.35rem; margin: 0; color: var(--muted); font-size: 0.7rem; }
+.vault-date svg { width: 0.9rem; height: 0.9rem; }
+.vault-actions, .record-actions { display: flex; flex-wrap: wrap; gap: 0.3rem 0.65rem; margin-top: 0.8rem; }
+.vault-actions .secondary-button { min-height: 2.75rem; }
+.vault-actions .text-button, .record-actions .text-button { gap: 0.3rem; justify-content: flex-start; }
+.vault-actions svg, .record-actions svg { width: 0.95rem; height: 0.95rem; }
+.danger-action { color: var(--danger); }
+.vault-create-form, .vault-inline-form, .worth-entry-form { display: grid; gap: 0.4rem; padding: 0.9rem; border: 1px solid var(--line); border-radius: 0.85rem; background: var(--paper); }
+.vault-create-form { margin-bottom: 0.9rem; }
+.vault-inline-form { margin-top: 0.8rem; }
+.vault-create-form label, .vault-inline-form label, .worth-entry-form label { margin-top: 0.35rem; color: var(--ink); font-size: 0.72rem; font-weight: 700; }
+.vault-create-form input, .vault-inline-form input, .worth-entry-form input, .worth-entry-form select, .worth-entry-form textarea { width: 100%; min-height: 2.9rem; padding: 0.65rem 0.75rem; border: 1px solid var(--line); border-radius: 0.65rem; outline: 0; background: #f5f8f6; color: var(--ink); }
+.worth-entry-form textarea { min-height: 4.2rem; resize: vertical; }
+.vault-create-form input:focus, .vault-inline-form input:focus, .worth-entry-form input:focus, .worth-entry-form select:focus, .worth-entry-form textarea:focus { border-color: var(--transaction); }
+.vault-goals .form-error, .net-worth-editor .form-error { color: var(--danger); }
+.archived-vaults { margin-top: 1rem; border-top: 1px solid var(--line); }
+.archived-vaults summary { min-height: 2.75rem; display: flex; align-items: center; cursor: pointer; color: var(--muted); font-size: 0.78rem; font-weight: 750; }
+.archived-vaults[open] summary { margin-bottom: 0.75rem; }
+
+.compact-state { min-height: 6rem; margin-top: 1rem; border: 1px dashed var(--line); border-radius: 1rem; }
+.editor-note { margin: -0.45rem 0 1rem; color: var(--muted); font-size: 0.78rem; line-height: 1.5; }
+.worth-editor-columns { display: grid; gap: 1rem; }
+.worth-editor-columns > section { min-width: 0; }
+.worth-editor-columns h3 { margin-bottom: 0.65rem; }
+.worth-entry-form > .primary-button { margin-top: 0.55rem; }
+.worth-item-list { display: grid; gap: 0.65rem; margin-top: 0.75rem; }
+.worth-item { padding: 0.85rem; border: 1px solid var(--line); border-radius: 0.8rem; background: #f5f8f6; }
+.worth-item-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.worth-item-heading > strong { overflow-wrap: anywhere; color: var(--ink); font-family: 'IBM Plex Mono', monospace; font-size: 0.88rem; letter-spacing: -0.03em; text-align: right; }
+.worth-item > p { margin: 0.55rem 0 0; color: var(--muted); font-size: 0.74rem; }
+.worth-entry-form.inline { margin-top: 0.65rem; }
 
 .recent-activity .section-heading { margin-bottom: 0.8rem; }
 .text-link, .text-button { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--transaction); font-size: 0.78rem; font-weight: 750; text-decoration: underline; text-underline-offset: 0.22rem; }
@@ -282,6 +334,8 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
   .budget-metric-grid > div, .budget-metric-grid > div:nth-child(odd) { border-right: 1px solid var(--line); border-bottom: 0; }
   .budget-metric-grid > div:last-child { border-right: 0; }
   .worth-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vault-grid, .worth-editor-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .archived-vaults .vault-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (min-width: 980px) {

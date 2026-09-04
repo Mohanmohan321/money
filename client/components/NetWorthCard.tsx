@@ -5,6 +5,7 @@ import { formatMoney } from '../format';
 
 interface NetWorthCardProps {
   data: NetWorthSummary;
+  onManage?: () => void;
 }
 
 const statusLabels: Record<NetWorthSummary['status'], string> = {
@@ -13,7 +14,7 @@ const statusLabels: Record<NetWorthSummary['status'], string> = {
   zero: 'Zero',
 };
 
-export function NetWorthCard({ data }: NetWorthCardProps) {
+export function NetWorthCard({ data, onManage }: NetWorthCardProps) {
   const headingId = useId();
   const owned = [
     ['Manual assets', data.manualAssets],
@@ -44,6 +45,11 @@ export function NetWorthCard({ data }: NetWorthCardProps) {
           {owed.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{formatMoney(value)}</dd></div>)}
         </dl>
       </div>
+      {onManage && (
+        <button className="secondary-button worth-manage-button" type="button" onClick={onManage}>
+          Manage assets and liabilities
+        </button>
+      )}
     </section>
   );
 }

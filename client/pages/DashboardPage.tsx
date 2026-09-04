@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, ReceiptText } from 'lucide-react';
 
-import type { DashboardData, MonthlyAnalysisData, NetWorthSummary, UpsertBudgetInput, Vault } from '../../shared/contracts';
+import type {
+  AssetRecord,
+  DashboardData,
+  LiabilityRecord,
+  MonthlyAnalysisData,
+  NetWorthSummary,
+  UpsertBudgetInput,
+  Vault,
+} from '../../shared/contracts';
 import { api } from '../api';
 import { BudgetOverview } from '../components/BudgetOverview';
 import { MovementChart } from '../components/MovementChart';
 import { NetWorthCard } from '../components/NetWorthCard';
+import { NetWorthEditor } from '../components/NetWorthEditor';
 import { RecentActivity } from '../components/RecentActivity';
+import { VaultGoals } from '../components/VaultGoals';
 
 function localCurrentMonth(): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -23,18 +33,52 @@ export function DashboardPage() {
   const [data, setData] = useState<DashboardData>();
   const [monthly, setMonthly] = useState<MonthlyAnalysisData>();
   const [netWorth, setNetWorth] = useState<NetWorthSummary>();
-  const [, setVaults] = useState<Vault[]>([]);
+  const [vaults, setVaults] = useState<Vault[]>();
+  const [assets, setAssets] = useState<AssetRecord[]>();
+  const [liabilities, setLiabilities] = useState<LiabilityRecord[]>();
+  const [worthEditorOpen, setWorthEditorOpen] = useState(false);
+  const [worthEditorLoading, setWorthEditorLoading] = useState(false);
+  const [worthEditorError, setWorthEditorError] = useState('');
   const [loading, setLoading] = useState(true);
   const [hasPartialFailure, setHasPartialFailure] = useState(false);
   const [month] = useState(localCurrentMonth);
   const mounted = useRef(false);
   const groupedRequestGeneration = useRef(0);
   const monthlyRequestGeneration = useRef(0);
+  const netWorthRequestGeneration = useRef(0);
+  const vaultRequestGeneration = useRef(0);
+  const worthRecordsRequestGeneration = useRef(0);
   const monthlyQuery = new URLSearchParams({ month }).toString();
+
+  const loadMonthlyAnalysis = useCallback(async () => {
+    const generation = ++monthlyRequestGeneration.current;
+    const refreshed = await api.monthlyAnalysis(monthlyQuery);
+    if (mounted.current && generation === monthlyRequestGeneration.current) setMonthly(refreshed);
+  }, [monthlyQuery]);
+
+  const loadNetWorth = useCallback(async () => {
+    const generation = ++netWorthRequestGeneration.current;
+    const refreshed = await api.netWorth();
+    if (mounted.current && generation === netWorthRequestGeneration.current) setNetWorth(refreshed);
+  }, []);
+
+  const loadVaults = useCallback(async () => {
+    const generation = ++vaultRequestGeneration.current;
+    const refreshed = await api.vaults();
+    if (mounted.current && generation === vaultRequestGeneration.current) setVaults(refreshed.items);
+  }, []);
+
+  const refreshAfterContribution = useCallback(async () => {
+    const results = await Promise.allSettled([loadVaults(), loadMonthlyAnalysis()]);
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+  }, [loadMonthlyAnalysis, loadVaults]);
 
   const loadDashboard = useCallback(async () => {
     const groupedGeneration = ++groupedRequestGeneration.current;
     const monthlyGeneration = ++monthlyRequestGeneration.current;
+    const netWorthGeneration = ++netWorthRequestGeneration.current;
+    const vaultGeneration = ++vaultRequestGeneration.current;
     setLoading(true);
     const results = await Promise.allSettled([
       api.dashboard(),
@@ -45,15 +89,16 @@ export function DashboardPage() {
 
     if (!mounted.current || groupedGeneration !== groupedRequestGeneration.current) return;
     const monthlyResultIsCurrent = monthlyGeneration === monthlyRequestGeneration.current;
+    const netWorthResultIsCurrent = netWorthGeneration === netWorthRequestGeneration.current;
+    const vaultResultIsCurrent = vaultGeneration === vaultRequestGeneration.current;
     if (results[0].status === 'fulfilled') setData(results[0].value);
     if (results[1].status === 'fulfilled' && monthlyResultIsCurrent) {
       setMonthly(results[1].value);
     }
-    if (results[2].status === 'fulfilled') setNetWorth(results[2].value);
-    if (results[3].status === 'fulfilled') setVaults(results[3].value.items);
-    setHasPartialFailure(results.some((result, index) => (
-      result.status === 'rejected' && (index !== 1 || monthlyResultIsCurrent)
-    )));
+    if (results[2].status === 'fulfilled' && netWorthResultIsCurrent) setNetWorth(results[2].value);
+    if (results[3].status === 'fulfilled' && vaultResultIsCurrent) setVaults(results[3].value.items);
+    const resultIsCurrent = [true, monthlyResultIsCurrent, netWorthResultIsCurrent, vaultResultIsCurrent];
+    setHasPartialFailure(results.some((result, index) => result.status === 'rejected' && resultIsCurrent[index]));
     setLoading(false);
   }, [monthlyQuery]);
 
@@ -64,16 +109,39 @@ export function DashboardPage() {
       mounted.current = false;
       groupedRequestGeneration.current += 1;
       monthlyRequestGeneration.current += 1;
+      netWorthRequestGeneration.current += 1;
+      vaultRequestGeneration.current += 1;
+      worthRecordsRequestGeneration.current += 1;
     };
   }, [loadDashboard]);
 
   async function saveBudget(input: UpsertBudgetInput) {
     await api.saveBudget(month, input);
-    const monthlyGeneration = ++monthlyRequestGeneration.current;
-    const refreshed = await api.monthlyAnalysis(monthlyQuery);
-    if (mounted.current && monthlyGeneration === monthlyRequestGeneration.current) {
-      setMonthly(refreshed);
+    await loadMonthlyAnalysis();
+  }
+
+  async function openWorthEditor() {
+    setWorthEditorOpen(true);
+    setWorthEditorLoading(true);
+    setWorthEditorError('');
+    setAssets(undefined);
+    setLiabilities(undefined);
+    const generation = ++worthRecordsRequestGeneration.current;
+    const results = await Promise.allSettled([api.assets(), api.liabilities()] as const);
+    if (!mounted.current || generation !== worthRecordsRequestGeneration.current) return;
+    if (results[0].status === 'fulfilled') setAssets(results[0].value.items);
+    if (results[1].status === 'fulfilled') setLiabilities(results[1].value.items);
+    if (results.some((result) => result.status === 'rejected')) {
+      setWorthEditorError('Manual assets and liabilities could not be loaded. Close the editor and try again.');
     }
+    setWorthEditorLoading(false);
+  }
+
+  function closeWorthEditor() {
+    worthRecordsRequestGeneration.current += 1;
+    setWorthEditorOpen(false);
+    setWorthEditorLoading(false);
+    setWorthEditorError('');
   }
 
   if (loading && !data && !monthly && !netWorth) {
@@ -92,8 +160,20 @@ export function DashboardPage() {
       )}
 
       {monthly && <BudgetOverview data={monthly} onSave={saveBudget} />}
-      {netWorth && <NetWorthCard data={netWorth} />}
+      {netWorth && <NetWorthCard data={netWorth} onManage={() => void openWorthEditor()} />}
+      {worthEditorOpen && worthEditorLoading && <div className="page-state compact-state">Loading manual net worth records…</div>}
+      {worthEditorOpen && worthEditorError && <p className="partial-failure" role="alert">{worthEditorError}</p>}
+      {worthEditorOpen && !worthEditorLoading && assets && liabilities && (
+        <NetWorthEditor assets={assets} liabilities={liabilities} onRefresh={loadNetWorth} onClose={closeWorthEditor} />
+      )}
       {monthly && <RecentActivity items={monthly.recentActivity} />}
+      {vaults && (
+        <VaultGoals
+          vaults={vaults}
+          onRefresh={loadVaults}
+          onContributionRefresh={refreshAfterContribution}
+        />
+      )}
 
       {data && (
         <>
