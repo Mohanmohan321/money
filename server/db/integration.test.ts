@@ -15,6 +15,7 @@ import { DrizzleBudgetStore } from '../budgets/drizzle-budget-store';
 import { DrizzleNetWorthStore } from '../net-worth/drizzle-net-worth-store';
 import { DrizzlePlanningStore } from '../planning/drizzle-planning-store';
 import { DrizzleRecordStore } from '../records/drizzle-record-store';
+import { DrizzleSubscriptionStore } from '../subscriptions/drizzle-subscription-store';
 import { DrizzleVaultStore } from '../vaults/drizzle-vault-store';
 import { monthRange, weekRangeContaining, yearRange } from '../lib/time';
 import { createDatabase, type AppDatabase } from './client';
@@ -23,6 +24,7 @@ import {
   income,
   liabilities,
   monthlyBudgets,
+  subscriptionReviews,
   transactions,
   vaultContributions,
   vaults,
@@ -43,6 +45,7 @@ interface IntegrationStores {
   planning: DrizzlePlanningStore;
   aggregates: DrizzleAggregateStore;
   sessions: DrizzleSessionStore;
+  subscriptions: DrizzleSubscriptionStore;
 }
 
 let stores: IntegrationStores | undefined;
@@ -128,6 +131,7 @@ beforeAll(async () => {
     planning: new DrizzlePlanningStore(database, new DrizzleBudgetStore(database)),
     aggregates: new DrizzleAggregateStore(database),
     sessions: new DrizzleSessionStore(database),
+    subscriptions: new DrizzleSubscriptionStore(database),
   };
 }, 120_000);
 
@@ -139,6 +143,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
     const legacyDescription = `Legacy transaction ${randomUUID()}`;
     const migration0 = await readFile(resolve(process.cwd(), 'drizzle/0000_robust_anita_blake.sql'), 'utf8');
     const migration1 = await readFile(resolve(process.cwd(), 'drizzle/0001_budgeting_foundation.sql'), 'utf8');
+    const migration2 = await readFile(resolve(process.cwd(), 'drizzle/0002_subscriptions.sql'), 'utf8');
     const isolatedMigration1 = migration1.replaceAll(
       '"public"."vaults"',
       `"${isolatedSchema}"."vaults"`,
@@ -156,6 +161,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
           [legacyDescription, '10.10'],
         ),
         ...splitMigration(isolatedMigration1).map((statement) => transaction.query(statement)),
+        ...splitMigration(migration2).map((statement) => transaction.query(statement)),
       ]);
 
       const backfilled = await sqlClient.query(
@@ -176,6 +182,63 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
          values ($1, $2, $3)`,
         ['Constraint probe', 'other', '0.00'],
       )).rejects.toThrow();
+    } finally {
+      await cleanup.run();
+    }
+  });
+
+  it('persists subscription review forecasts without changing actual spending and marks only actual payments', async () => {
+    const { database, subscriptions, planning } = testStores();
+    const year = await allocatePlanningYear(database);
+    const suffix = randomUUID().replace(/[^a-f]/g, '');
+    const description = `Recurring Service ${suffix}`;
+    const transactionIds = [randomUUID(), randomUUID()];
+    const firstAt = new Date(`${year}-07-02T10:00:00.000Z`);
+    const secondAt = new Date(`${year}-08-01T10:00:00.000Z`);
+    const detectionNow = new Date(`${year}-08-02T00:00:00.000Z`);
+    const cleanup = new CleanupRegistry();
+    try {
+      await database.insert(transactions).values([
+        { id: transactionIds[0], description: `${description} payment`, category: 'bills', amount: '649.00', createdAt: firstAt },
+        { id: transactionIds[1], description: `${description} order 849201`, category: 'bills', amount: '699.00', createdAt: secondAt },
+      ]);
+      cleanup.add(() => database.delete(transactions).where(eq(transactions.id, transactionIds[0])));
+      cleanup.add(() => database.delete(transactions).where(eq(transactions.id, transactionIds[1])));
+
+      const before = await subscriptions.listCandidates(detectionNow, 'UTC');
+      const candidate = before.items.find((item) => item.supportingTransactionIds.includes(transactionIds[0]));
+      expect(candidate).toEqual(expect.objectContaining({
+        reviewStatus: 'pending', typicalAmount: '674.00', monthlyEquivalent: '674.00',
+        supportingTransactionIds: transactionIds,
+      }));
+      const merchantKey = candidate!.merchantKey;
+      cleanup.add(() => database.delete(subscriptionReviews).where(eq(subscriptionReviews.merchantKey, merchantKey)));
+
+      const augustRange = monthRange(`${year}-08`, 'UTC');
+      const week = weekRangeContaining(`${year}-08-01`, 'UTC');
+      const actualBefore = await planning.getMonthly({
+        month: `${year}-08`, timezone: 'UTC', range: augustRange, week,
+        weekFromLabel: `${year}-07-27`, weekToLabel: `${year}-08-02`,
+      });
+      await subscriptions.reviewCandidate(merchantKey, 'confirmed', detectionNow, 'UTC');
+      const reviewed = await subscriptions.listCandidates(detectionNow, 'UTC');
+      expect(reviewed.confirmedMonthlyForecast).toMatch(/^\d+\.\d{2}$/);
+      expect(reviewed.confirmedMonthlyForecast).toBe('674.00');
+      const actualAfter = await planning.getMonthly({
+        month: `${year}-08`, timezone: 'UTC', range: augustRange, week,
+        weekFromLabel: `${year}-07-27`, weekToLabel: `${year}-08-02`,
+      });
+      expect(actualAfter.summary.spending).toBe(actualBefore.summary.spending);
+
+      const annualRange = yearRange(year, 'UTC');
+      const breakdown = await planning.getBreakdown({
+        year, selectedMonth: `${year}-08`, timezone: 'UTC', yearRange: annualRange,
+        monthRange: augustRange,
+      });
+      expect(breakdown.days[0]).toEqual(expect.objectContaining({
+        spending: '699.00', subscriptionPaymentCount: 1,
+      }));
+      expect(breakdown.days.every((day) => day.date <= `${year}-08-31`)).toBe(true);
     } finally {
       await cleanup.run();
     }

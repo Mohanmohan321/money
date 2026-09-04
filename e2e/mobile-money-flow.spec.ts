@@ -1,5 +1,9 @@
+import { randomUUID } from 'node:crypto';
+
 import { expect, test, type Page } from '@playwright/test';
 import { z } from 'zod';
+
+import { backdateE2eTransactions, cleanupE2eDatabase } from './database-cleanup';
 
 const createdRecordSchema = z.object({
   success: z.literal(true),
@@ -115,4 +119,67 @@ test('budgeting surfaces keep mobile order and expose desktop report equivalents
   await expect(page.getByRole('table', { name: 'Monthly savings data' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Spending by category data' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Income by source data' })).toBeVisible();
+});
+
+test('mobile receipt OCR requires editable confirmation before creating spending', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-chromium', 'Receipt camera acceptance runs on mobile Chromium');
+  await unlock(page);
+  let transactionId = '';
+  try {
+    await page.setViewportSize({ width: 1200, height: 600 });
+    await page.setContent('<main style="background:#fff;color:#000;font:900 96px Arial;padding:80px;line-height:1.35">SWIGGY<br>GRAND TOTAL 441.00</main>');
+    const buffer = await page.screenshot();
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Add' }).click();
+    const receiptInput = page.getByLabel('Receipt image');
+    await expect(receiptInput).toHaveAttribute('capture', 'environment');
+    await receiptInput.setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer });
+    await page.getByRole('button', { name: 'Scan receipt' }).click();
+    await expect(page.getByLabel('Merchant')).toHaveValue(/SWIGGY/i, { timeout: 120_000 });
+    await expect(page.getByLabel('Amount')).toHaveValue('441.00');
+    expect((await page.request.get('/api/transactions')).ok()).toBe(true);
+    const responsePromise = page.waitForResponse((response) => response.url().endsWith('/api/transactions') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Confirm spending' }).click();
+    const payload = createdRecordSchema.parse(await (await responsePromise).json());
+    transactionId = payload.data.id;
+    await expect(page.getByRole('status')).toHaveText('Transaction saved');
+  } finally {
+    if (transactionId) await page.request.delete(`/api/transactions/${transactionId}`);
+  }
+});
+
+test('mobile subscription review keeps forecast separate from actual spending', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-chromium', 'Subscription review acceptance runs on mobile Chromium');
+  test.skip(process.env.TEST_DATABASE_DISPOSABLE !== 'true', 'TEST_DATABASE_DISPOSABLE=true is required');
+  await unlock(page);
+  const merchantToken = randomUUID().replace(/[^a-f]/g, '').slice(0, 12) || 'abcdef';
+  const description = `Stream ${merchantToken}`;
+  const transactionIds: string[] = [];
+  let merchantKey = '';
+  try {
+    for (const amount of ['649.00', '699.00']) {
+      const response = await page.request.post('/api/transactions', { data: { description, amount, category: 'entertainment' } });
+      const payload = createdRecordSchema.parse(await response.json());
+      transactionIds.push(payload.data.id);
+    }
+    const base = new Date();
+    await backdateE2eTransactions([
+      { id: transactionIds[0], createdAt: new Date(base.getTime() - 60 * 86_400_000) },
+      { id: transactionIds[1], createdAt: new Date(base.getTime() - 30 * 86_400_000) },
+    ]);
+    const candidatesResponse = await page.request.get('/api/subscriptions/candidates');
+    const candidates = await candidatesResponse.json();
+    const candidate = candidates.data.items.find((item: { supportingTransactionIds: string[] }) => item.supportingTransactionIds.includes(transactionIds[0]));
+    expect(candidate).toBeTruthy();
+    merchantKey = candidate.merchantKey;
+
+    await page.goto('/');
+    const actualBefore = await page.getByText('Actual monthly spending').locator('..').textContent();
+    await page.getByRole('button', { name: `Confirm ${candidate.merchant} subscription` }).click();
+    await expect(page.getByText('Confirmed')).toBeVisible();
+    await expect(page.getByText(/not included in actual spending/i)).toBeVisible();
+    expect(await page.getByText('Actual monthly spending').locator('..').textContent()).toBe(actualBefore);
+  } finally {
+    await cleanupE2eDatabase({ transactionIds, subscriptionMerchantKeys: merchantKey ? [merchantKey] : [] });
+  }
 });

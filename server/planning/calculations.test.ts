@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAnnualReport,
   buildPlanningBudgets,
+  countConfirmedSubscriptionPayments,
   fillBudgetDays,
   fillBudgetMonths,
   fillCategorySpending,
@@ -11,6 +12,14 @@ import {
 } from './drizzle-planning-store';
 
 describe('planning calculations', () => {
+  it('counts only actual transaction dates matching confirmed normalized merchant keys', () => {
+    expect(countConfirmedSubscriptionPayments([
+      { type: 'transaction', description: 'NETFLIX order 123', date: '2026-09-01' },
+      { type: 'transaction', description: 'Netflix payment', date: '2026-09-01' },
+      { type: 'transaction', description: 'Other shop', date: '2026-09-02' },
+      { type: 'income', description: 'Netflix', date: '2026-09-03' },
+    ], new Set(['netflix']))).toEqual(new Map([['2026-09-01', 2]]));
+  });
   it('derives saved and suggested annual budgets from one ordered batch', () => {
     const budgets = buildPlanningBudgets('2026', [
       {

@@ -179,6 +179,9 @@ function installApi(
       }
       return jsonResponse({ success: true, data: { items: [] } });
     }
+    if (path === '/api/subscriptions/candidates') {
+      return jsonResponse({ success: true, data: { items: [], confirmedMonthlyForecast: '0.00' } });
+    }
     if (path === '/api/budgets/2026-09' && method === 'PUT') {
       return jsonResponse({
         success: true,

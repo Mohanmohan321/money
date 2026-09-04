@@ -53,6 +53,26 @@ describe('authentication API', () => {
     });
   });
 
+  it('keeps restrictive security headers while allowing only the receipt worker runtime', async () => {
+    const response = await request(createApp({ config, sessionStore: new MemorySessionStore() }))
+      .get('/healthz')
+      .expect(200);
+    const policy = response.headers['content-security-policy'];
+    expect(policy).toContain("default-src 'self'");
+    expect(policy).toContain("worker-src 'self' blob:");
+    expect(policy).toContain("script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net");
+    expect(policy).toContain("connect-src 'self' https://cdn.jsdelivr.net");
+    expect(policy).not.toContain("'unsafe-inline'");
+    expect(policy).not.toContain('*');
+    expect(response.headers['strict-transport-security']).toBeDefined();
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers['x-frame-options']).toBe('SAMEORIGIN');
+
+    await request(createApp({ config, sessionStore: new MemorySessionStore() }))
+      .get('/api/transactions')
+      .expect(401);
+  });
+
   it('logs in, reports authentication, logs out, and revokes the session', async () => {
     const store = new MemorySessionStore();
     const agent = request.agent(createApp({ config, sessionStore: store }));

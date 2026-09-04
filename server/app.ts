@@ -47,7 +47,19 @@ export function createApp({ config, sessionStore, protectedRouter = Router() }: 
   }
 
   app.disable('x-powered-by');
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        workerSrc: ["'self'", 'blob:'],
+        scriptSrc: ["'self'", "'wasm-unsafe-eval'", 'https://cdn.jsdelivr.net'],
+        connectSrc: ["'self'", 'https://cdn.jsdelivr.net'],
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        fontSrc: ["'self'", 'data:'],
+        styleSrc: ["'self'"],
+      },
+    },
+  }));
   app.use(requestMetadata(config));
   app.use(enforceSameOrigin(config.appOrigin));
   app.use(express.json({ limit: '16kb' }));

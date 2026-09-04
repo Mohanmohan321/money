@@ -181,6 +181,10 @@ export const budgetBreakdownQuerySchema = z
 
 export const annualAnalysisQuerySchema = z.object({ year: yearSchema });
 
+export const subscriptionReviewStatusSchema = z.enum(['confirmed', 'dismissed']);
+export const subscriptionMerchantKeySchema = z.string().trim().min(1, 'Merchant key is required').max(200, 'Merchant key is too long');
+export const reviewSubscriptionSchema = z.object({ status: subscriptionReviewStatusSchema });
+
 export type RecordType = z.infer<typeof recordTypeSchema>;
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 export type CreatePersonRecordInput = z.infer<typeof createPersonRecordSchema>;
@@ -203,6 +207,7 @@ export type UpdateLiabilityInput = z.infer<typeof updateLiabilitySchema>;
 export type MonthlyAnalysisQuery = z.infer<typeof monthlyAnalysisQuerySchema>;
 export type BudgetBreakdownQuery = z.infer<typeof budgetBreakdownQuerySchema>;
 export type AnnualAnalysisQuery = z.infer<typeof annualAnalysisQuerySchema>;
+export type SubscriptionReviewStatus = z.infer<typeof subscriptionReviewStatusSchema>;
 
 export interface TransactionRecord {
   id: string;
@@ -349,6 +354,25 @@ export interface AnnualReportData {
   incomeBySource: Array<{ source: string; amount: string; percentage: string }>;
   highestSpendingMonth?: string;
   bestSavingMonth?: string;
+}
+
+export interface SubscriptionCandidate {
+  merchantKey: string;
+  merchant: string;
+  category: SpendingCategory;
+  typicalAmount: string;
+  cadence: 'weekly' | 'monthly';
+  nextExpectedAt: string;
+  monthlyEquivalent: string;
+  annualCost: string;
+  confidence: 'medium' | 'high';
+  supportingTransactionIds: string[];
+  reviewStatus: 'pending' | SubscriptionReviewStatus;
+}
+
+export interface SubscriptionCandidateList {
+  items: SubscriptionCandidate[];
+  confirmedMonthlyForecast: string;
 }
 
 export interface PersonRecord {

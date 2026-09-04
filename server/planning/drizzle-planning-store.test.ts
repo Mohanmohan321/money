@@ -74,6 +74,6 @@ describe('DrizzlePlanningStore bounded budget loading', () => {
     });
 
     expect(getBudget).not.toHaveBeenCalled();
-    expect(execute).toHaveBeenCalledTimes(4);
+    expect(execute).toHaveBeenCalledTimes(5);
   });
 });

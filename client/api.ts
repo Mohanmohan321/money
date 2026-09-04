@@ -18,6 +18,8 @@ import type {
   NetWorthSummary,
   PersonRecord,
   SpendingCategory,
+  SubscriptionCandidate,
+  SubscriptionCandidateList,
   TransactionRecord,
   UpdateAssetInput,
   UpdateIncomeInput,
@@ -128,6 +130,12 @@ export const api = {
   deleteLiability: (id: string) =>
     apiRequest<{ deleted: boolean }>(`/api/liabilities/${id}`, { method: 'DELETE' }),
   netWorth: () => apiRequest<NetWorthSummary>('/api/net-worth'),
+  subscriptions: () => apiRequest<SubscriptionCandidateList>('/api/subscriptions/candidates'),
+  reviewSubscription: (merchantKey: string, status: 'confirmed' | 'dismissed') =>
+    apiRequest<SubscriptionCandidate>(`/api/subscriptions/${encodeURIComponent(merchantKey)}/review`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    }),
   createLent: (personName: string, amount: string) =>
     apiRequest<PersonRecord>('/api/lent', {
       method: 'POST',

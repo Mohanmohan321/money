@@ -5,6 +5,7 @@ import type { IncomeCategory, SpendingCategory } from '../../shared/contracts';
 import { categorizeTransaction } from '../../shared/budgeting';
 import { api, ApiError } from '../api';
 import { CategoryBadge, categoryPresentation } from '../components/CategoryBadge';
+import { SnapReceipt } from '../components/SnapReceipt';
 
 type EntryMode = 'transaction' | 'income' | 'lent' | 'borrowed';
 
@@ -87,6 +88,11 @@ export function AddPage() {
   return (
     <div className="page add-page">
       <header className="page-header"><div><p className="eyebrow">Quick entry</p><h1>Log money</h1></div></header>
+      <SnapReceipt onSaved={() => {
+        resetEntry();
+        setError('');
+        setMessage('Transaction saved');
+      }} />
       <div className="entry-tabs" role="tablist" aria-label="Record type">
         {(Object.keys(modes) as EntryMode[]).map((key) => {
           const Icon = modes[key].icon;

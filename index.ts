@@ -16,6 +16,8 @@ import { DrizzlePlanningStore } from './server/planning/drizzle-planning-store';
 import { createPlanningRouter } from './server/planning/routes';
 import { DrizzleRecordStore } from './server/records/drizzle-record-store';
 import { createRecordsRouter } from './server/records/routes';
+import { DrizzleSubscriptionStore } from './server/subscriptions/drizzle-subscription-store';
+import { createSubscriptionRouter } from './server/subscriptions/routes';
 import { DrizzleVaultStore } from './server/vaults/drizzle-vault-store';
 import { createVaultRouter } from './server/vaults/routes';
 
@@ -28,6 +30,7 @@ function createConfiguredApplication() {
     const vaultStore = new DrizzleVaultStore(database);
     const netWorthStore = new DrizzleNetWorthStore(database);
     const aggregateStore = new DrizzleAggregateStore(database);
+    const subscriptionStore = new DrizzleSubscriptionStore(database);
     const planningStore = new DrizzlePlanningStore(database, budgetStore);
     const protectedRouter = Router();
     protectedRouter.use(createRecordsRouter(recordStore, config.timezone));
@@ -35,6 +38,7 @@ function createConfiguredApplication() {
     protectedRouter.use(createVaultRouter(vaultStore));
     protectedRouter.use(createNetWorthRouter(netWorthStore));
     protectedRouter.use(createPlanningRouter(planningStore, config.timezone));
+    protectedRouter.use(createSubscriptionRouter(subscriptionStore, config.timezone));
     protectedRouter.use(createAggregateRouter(aggregateStore, config.timezone));
 
     return {

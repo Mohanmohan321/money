@@ -108,6 +108,7 @@ function monthlyWithIncome(income: string): MonthlyAnalysisData {
 }
 
 function renderDashboard() {
+  vi.spyOn(api, 'subscriptions').mockResolvedValue({ items: [], confirmedMonthlyForecast: '0.00' });
   return render(<MemoryRouter><DashboardPage /></MemoryRouter>);
 }
 

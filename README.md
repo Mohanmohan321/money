@@ -12,6 +12,7 @@ The React client never talks to Neon directly. Express owns authentication, vali
 - Neon PostgreSQL through the Neon serverless driver
 - Zod validation, Luxon timezone boundaries, decimal-string money contracts
 - Vitest, Testing Library, Supertest, and Playwright
+- Tesseract.js browser worker for private receipt OCR
 
 ## Requirements
 
@@ -63,7 +64,7 @@ npm.cmd run db:migrate
 
 There is no SQLite, in-memory, or mock-data runtime fallback. Missing Neon configuration produces a clear startup error.
 
-Migration `0001_budgeting_foundation.sql` adds monthly budgets, income, spending categories, Vaults and contributions, assets, and liabilities. It backfills existing transactions to the `other` category before making the category required. Apply it before using the budgeting Dashboard or Analysis endpoints.
+Migration `0001_budgeting_foundation.sql` adds monthly budgets, income, spending categories, Vaults and contributions, assets, and liabilities. It backfills existing transactions to the `other` category before making the category required. Migration `0002_subscriptions.sql` additively creates persisted subscription reviews and does not alter financial records. Apply both before using the budgeting Dashboard or Analysis endpoints.
 
 ## Run locally
 
@@ -162,6 +163,8 @@ All `/api` routes except authentication require the signed `money_session` HTTP-
 | POST, GET | `/api/liabilities` | Create or list manual liabilities |
 | PUT, DELETE | `/api/liabilities/:id` | Update or delete a manual liability |
 | GET | `/api/net-worth` | Server-computed owned, owed, and net-worth totals |
+| GET | `/api/subscriptions/candidates` | Detect pending and confirmed recurring-payment candidates and return the separate confirmed forecast |
+| PUT | `/api/subscriptions/:merchantKey/review` | Persist `{ "status": "confirmed" | "dismissed" }` for a current candidate |
 | GET | `/api/analysis/monthly?month=&week=` | Monthly summary, categories, and Monday-Sunday activity |
 | GET | `/api/analysis/breakdown?year=&month=` | 12-month rail, calendar totals, and day activity |
 | GET | `/api/analysis/annual?year=` | Annual metrics, chart series, shares, and extrema |
@@ -179,6 +182,8 @@ Date filters use `YYYY-MM-DD` in `APP_TIMEZONE`; `to` is inclusive. API timestam
 - Budget Score is the server-provided `savings / income * 100`, clamped from 0 to 100; zero income produces zero.
 - Net Worth is `total owned - total owed`. Owned includes manual assets and outstanding lending; owed includes manual liabilities and outstanding borrowing. Vault savings remain owned money.
 - Spending categories are Food, Travel, Shopping, Coffee, Entertainment, Health, Bills, and Other. The server's deterministic suggestion is used only when the user does not choose a category; persisted user choices stay authoritative.
+- Snap Receipt accepts non-empty JPEG, PNG, and WebP images up to 10 MiB. OCR is dynamically loaded and runs in a browser worker; the image and recognized text are never uploaded or persisted. The first scan downloads the English model from jsDelivr and subsequent scans can reuse the browser cache. Merchant, amount, and category remain editable, and no spending record exists until **Confirm spending** succeeds. There is no receipt server route and no OCR secret.
+- Subscription detection requires at least two normalized merchant matches. Weekly gaps are 5-9 days, monthly gaps are 25-35 days, and every amount must remain within 10% of the Decimal median. Two occurrences have medium confidence; three or more have high confidence. Confirmed monthly and annual projections are forecasts only: they never change actual Spending or add future calendar dates. The Breakdown calendar marks only persisted transactions whose normalized merchant currently has a confirmed review.
 
 The `/analytics` bookmark remains valid, while the visible navigation label is **Analysis**. Its Monthly Budget, Budgeting Breakdown, and Annual Report tabs render only API-provided financial totals. Browser number conversion is limited to chart coordinates and progress geometry; displayed amounts come from decimal-string contracts.
 
@@ -189,7 +194,7 @@ The `/analytics` bookmark remains valid, while the visible navigation label is *
 - Production cookies use `Secure`.
 - Login is rate limited to five attempts per 15 minutes per IP.
 - State-changing requests with a foreign `Origin` are rejected.
-- Helmet security headers, a 16 KiB JSON limit, Zod request validation, parameterized Drizzle queries, and sanitized error responses are enabled.
+- Helmet security headers, a 16 KiB JSON limit, Zod request validation, parameterized Drizzle queries, and sanitized error responses are enabled. The receipt worker CSP is narrowly limited to self/blob workers, WebAssembly evaluation, and jsDelivr scripts/model connections; inline scripts and wildcard origins are not enabled.
 - Passwords, cookies, database URLs, and financial request bodies are not logged.
 
 ## Verification
@@ -220,4 +225,4 @@ npx.cmd playwright install chromium firefox
 npm.cmd run test:e2e
 ```
 
-Playwright is configured for mobile Chromium and desktop Firefox. With a migrated disposable runtime database, it covers real cookie authentication, automatic timestamps, all three original create flows, unified history and cleanup, mobile Dashboard ordering/no-overflow/tab access, and desktop Breakdown/report-table layout. These live checks are separate from the database-free component suite.
+Playwright is configured for mobile Chromium and desktop Firefox. With a migrated disposable runtime database, it covers real cookie authentication, automatic timestamps, all original create flows, runtime-generated receipt OCR, subscription review and forecast separation, unified history and targeted cleanup, mobile Dashboard ordering/no-overflow/tab access, and desktop Breakdown/report-table layout. Set `TEST_DATABASE_DISPOSABLE=true` for the automation cases that directly backdate or remove explicitly tracked test rows. The helper refuses production, deletes contribution/review children before parents, accepts explicit IDs/keys only, and never truncates a table. These live checks are separate from the database-free component suite.

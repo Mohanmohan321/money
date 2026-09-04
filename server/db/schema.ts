@@ -3,6 +3,7 @@ import {
   check,
   date,
   index,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -123,6 +124,25 @@ export const liabilities = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [check('liabilities_outstanding_balance_positive', sql`${table.outstandingBalance} > 0`)],
+);
+
+export const subscriptionReviews = pgTable(
+  'subscription_reviews',
+  {
+    merchantKey: varchar('merchant_key', { length: 200 }).primaryKey(),
+    status: varchar('status', { length: 16 }).notNull(),
+    cadence: varchar('cadence', { length: 16 }).notNull(),
+    representativeAmount: money('representative_amount'),
+    supportingTransactionIds: jsonb('supporting_transaction_ids').$type<string[]>().notNull(),
+    nextExpectedAt: timestamp('next_expected_at', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check('subscription_reviews_amount_positive', sql`${table.representativeAmount} > 0`),
+    check('subscription_reviews_status_valid', sql`${table.status} in ('confirmed', 'dismissed')`),
+    check('subscription_reviews_cadence_valid', sql`${table.cadence} in ('weekly', 'monthly')`),
+  ],
 );
 
 export const moneyLent = pgTable(

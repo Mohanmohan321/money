@@ -7,6 +7,7 @@ import type {
   LiabilityRecord,
   MonthlyAnalysisData,
   NetWorthSummary,
+  SubscriptionCandidateList,
   UpsertBudgetInput,
   Vault,
 } from '../../shared/contracts';
@@ -16,6 +17,8 @@ import { MovementChart } from '../components/MovementChart';
 import { NetWorthCard } from '../components/NetWorthCard';
 import { NetWorthEditor } from '../components/NetWorthEditor';
 import { RecentActivity } from '../components/RecentActivity';
+import { SnapReceipt } from '../components/SnapReceipt';
+import { SubscriptionDetector } from '../components/SubscriptionDetector';
 import { VaultGoals } from '../components/VaultGoals';
 
 function localCurrentMonth(): string {
@@ -36,6 +39,8 @@ export function DashboardPage() {
   const [vaults, setVaults] = useState<Vault[]>();
   const [assets, setAssets] = useState<AssetRecord[]>();
   const [liabilities, setLiabilities] = useState<LiabilityRecord[]>();
+  const [subscriptions, setSubscriptions] = useState<SubscriptionCandidateList>();
+  const [subscriptionError, setSubscriptionError] = useState('');
   const [worthEditorOpen, setWorthEditorOpen] = useState(false);
   const [worthEditorLoading, setWorthEditorLoading] = useState(false);
   const [worthEditorError, setWorthEditorError] = useState('');
@@ -44,10 +49,12 @@ export function DashboardPage() {
   const [month] = useState(localCurrentMonth);
   const mounted = useRef(false);
   const groupedRequestGeneration = useRef(0);
+  const dashboardRequestGeneration = useRef(0);
   const monthlyRequestGeneration = useRef(0);
   const netWorthRequestGeneration = useRef(0);
   const vaultRequestGeneration = useRef(0);
   const worthRecordsRequestGeneration = useRef(0);
+  const subscriptionRequestGeneration = useRef(0);
   const monthlyQuery = new URLSearchParams({ month }).toString();
 
   const loadMonthlyAnalysis = useCallback(async () => {
@@ -55,6 +62,12 @@ export function DashboardPage() {
     const refreshed = await api.monthlyAnalysis(monthlyQuery);
     if (mounted.current && generation === monthlyRequestGeneration.current) setMonthly(refreshed);
   }, [monthlyQuery]);
+
+  const loadDailyDashboard = useCallback(async () => {
+    const generation = ++dashboardRequestGeneration.current;
+    const refreshed = await api.dashboard();
+    if (mounted.current && generation === dashboardRequestGeneration.current) setData(refreshed);
+  }, []);
 
   const loadNetWorth = useCallback(async () => {
     const generation = ++netWorthRequestGeneration.current;
@@ -68,6 +81,20 @@ export function DashboardPage() {
     if (mounted.current && generation === vaultRequestGeneration.current) setVaults(refreshed.items);
   }, []);
 
+  const loadSubscriptions = useCallback(async () => {
+    const generation = ++subscriptionRequestGeneration.current;
+    setSubscriptionError('');
+    try {
+      const refreshed = await api.subscriptions();
+      if (mounted.current && generation === subscriptionRequestGeneration.current) setSubscriptions(refreshed);
+    } catch (caught) {
+      if (mounted.current && generation === subscriptionRequestGeneration.current) {
+        setSubscriptionError('Subscriptions could not be loaded. Try refreshing this section.');
+      }
+      throw caught;
+    }
+  }, []);
+
   const refreshAfterContribution = useCallback(async () => {
     const results = await Promise.allSettled([loadVaults(), loadMonthlyAnalysis()]);
     const failure = results.find((result) => result.status === 'rejected');
@@ -76,28 +103,40 @@ export function DashboardPage() {
 
   const loadDashboard = useCallback(async () => {
     const groupedGeneration = ++groupedRequestGeneration.current;
+    const dashboardGeneration = ++dashboardRequestGeneration.current;
     const monthlyGeneration = ++monthlyRequestGeneration.current;
     const netWorthGeneration = ++netWorthRequestGeneration.current;
     const vaultGeneration = ++vaultRequestGeneration.current;
+    const subscriptionGeneration = ++subscriptionRequestGeneration.current;
     setLoading(true);
     const results = await Promise.allSettled([
       api.dashboard(),
       api.monthlyAnalysis(monthlyQuery),
       api.netWorth(),
       api.vaults(),
+      api.subscriptions(),
     ] as const);
 
     if (!mounted.current || groupedGeneration !== groupedRequestGeneration.current) return;
     const monthlyResultIsCurrent = monthlyGeneration === monthlyRequestGeneration.current;
     const netWorthResultIsCurrent = netWorthGeneration === netWorthRequestGeneration.current;
     const vaultResultIsCurrent = vaultGeneration === vaultRequestGeneration.current;
-    if (results[0].status === 'fulfilled') setData(results[0].value);
+    const subscriptionResultIsCurrent = subscriptionGeneration === subscriptionRequestGeneration.current;
+    const dashboardResultIsCurrent = dashboardGeneration === dashboardRequestGeneration.current;
+    if (results[0].status === 'fulfilled' && dashboardResultIsCurrent) setData(results[0].value);
     if (results[1].status === 'fulfilled' && monthlyResultIsCurrent) {
       setMonthly(results[1].value);
     }
     if (results[2].status === 'fulfilled' && netWorthResultIsCurrent) setNetWorth(results[2].value);
     if (results[3].status === 'fulfilled' && vaultResultIsCurrent) setVaults(results[3].value.items);
-    const resultIsCurrent = [true, monthlyResultIsCurrent, netWorthResultIsCurrent, vaultResultIsCurrent];
+    if (results[4].status === 'fulfilled' && subscriptionResultIsCurrent) {
+      setSubscriptions(results[4].value);
+      setSubscriptionError('');
+    }
+    if (results[4].status === 'rejected' && subscriptionResultIsCurrent) {
+      setSubscriptionError('Subscriptions could not be loaded. Try refreshing this section.');
+    }
+    const resultIsCurrent = [dashboardResultIsCurrent, monthlyResultIsCurrent, netWorthResultIsCurrent, vaultResultIsCurrent, subscriptionResultIsCurrent];
     setHasPartialFailure(results.some((result, index) => result.status === 'rejected' && resultIsCurrent[index]));
     setLoading(false);
   }, [monthlyQuery]);
@@ -108,10 +147,12 @@ export function DashboardPage() {
     return () => {
       mounted.current = false;
       groupedRequestGeneration.current += 1;
+      dashboardRequestGeneration.current += 1;
       monthlyRequestGeneration.current += 1;
       netWorthRequestGeneration.current += 1;
       vaultRequestGeneration.current += 1;
       worthRecordsRequestGeneration.current += 1;
+      subscriptionRequestGeneration.current += 1;
     };
   }, [loadDashboard]);
 
@@ -167,6 +208,11 @@ export function DashboardPage() {
         <NetWorthEditor assets={assets} liabilities={liabilities} onRefresh={loadNetWorth} onClose={closeWorthEditor} />
       )}
       {monthly && <RecentActivity items={monthly.recentActivity} />}
+      <SnapReceipt compact onSaved={async () => {
+        const results = await Promise.allSettled([loadMonthlyAnalysis(), loadDailyDashboard()]);
+        const failure = results.find((result) => result.status === 'rejected');
+        if (failure?.status === 'rejected') throw failure.reason;
+      }} />
       {vaults && (
         <VaultGoals
           vaults={vaults}
@@ -174,6 +220,12 @@ export function DashboardPage() {
           onContributionRefresh={refreshAfterContribution}
         />
       )}
+      <SubscriptionDetector
+        data={subscriptions}
+        error={subscriptionError}
+        actualSpending={monthly?.summary.spending ?? '0.00'}
+        onRefresh={loadSubscriptions}
+      />
 
       {data && (
         <>

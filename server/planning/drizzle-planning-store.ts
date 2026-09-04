@@ -15,6 +15,7 @@ import type {
 } from '../../shared/contracts';
 import type { BudgetStore } from '../budgets/store';
 import type { AppDatabase } from '../db/client';
+import { normalizeMerchant } from '../subscriptions/detector';
 import type {
   AnnualPlanningQuery,
   BreakdownPlanningQuery,
@@ -261,7 +262,24 @@ export function fillCategorySpending(
   });
 }
 
-function dayPoints(rows: DayRow[], activities: ActivityRow[]): CalendarDay[] {
+export function countConfirmedSubscriptionPayments(
+  activities: Array<{ type: string; description: string | null; date: string }>,
+  confirmedKeys: ReadonlySet<string>,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const activity of activities) {
+    if (activity.type !== 'transaction' || !activity.description) continue;
+    if (!confirmedKeys.has(normalizeMerchant(activity.description))) continue;
+    counts.set(activity.date, (counts.get(activity.date) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function dayPoints(
+  rows: DayRow[],
+  activities: ActivityRow[],
+  confirmedKeys: ReadonlySet<string> = new Set(),
+): CalendarDay[] {
   const activityByDate = new Map<string, RecentActivity[]>();
   for (const row of activities) {
     const date = String((row as ActivityRow & { date?: string }).date ?? '');
@@ -269,6 +287,7 @@ function dayPoints(rows: DayRow[], activities: ActivityRow[]): CalendarDay[] {
     list.push(asActivity(row));
     activityByDate.set(date, list);
   }
+  const subscriptionCounts = countConfirmedSubscriptionPayments(activities, confirmedKeys);
   return rows.map((row) => ({
     date: String(row.date),
     income: normalizeMoney(row.income),
@@ -276,7 +295,7 @@ function dayPoints(rows: DayRow[], activities: ActivityRow[]): CalendarDay[] {
     savings: normalizeMoney(row.savings),
     activity: activityByDate.get(String(row.date)) ?? [],
     vaultContributionCount: Number(row.vaultContributionCount ?? 0),
-    subscriptionPaymentCount: 0,
+    subscriptionPaymentCount: subscriptionCounts.get(String(row.date)) ?? 0,
   }));
 }
 
@@ -483,7 +502,7 @@ export class DrizzlePlanningStore implements PlanningStore {
   }
 
   async getBreakdown(query: BreakdownPlanningQuery) {
-    const [{ months }, daysResult, activityResult] = await Promise.all([
+    const [{ months }, daysResult, activityResult, confirmedReviewsResult] = await Promise.all([
       this.loadYearMonths(
         query.year,
         query.timezone,
@@ -515,6 +534,11 @@ export class DrizzlePlanningStore implements PlanningStore {
         query.monthRange.toExclusive,
         query.timezone,
       ),
+      this.database.execute(sql<{ merchantKey: string }>`
+        SELECT merchant_key AS "merchantKey"
+        FROM subscription_reviews
+        WHERE status = 'confirmed'
+      `),
     ]);
 
     return {
@@ -525,7 +549,11 @@ export class DrizzlePlanningStore implements PlanningStore {
         query.monthRange.from,
         query.monthRange.toExclusive,
         query.timezone,
-        dayPoints(daysResult.rows as unknown as DayRow[], activityResult),
+        dayPoints(
+          daysResult.rows as unknown as DayRow[],
+          activityResult,
+          new Set(confirmedReviewsResult.rows.map((row) => String(row.merchantKey))),
+        ),
       ),
     };
   }
