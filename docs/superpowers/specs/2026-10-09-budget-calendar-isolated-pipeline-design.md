@@ -1,4 +1,6 @@
-# Isolated Budget Calendar Pipeline Design
+# Superseded: Isolated Budget Calendar Pipeline Design
+
+This proposal is superseded by `2026-10-09-budget-workspace-design.md`. It must not be implemented because the approved architecture reuses Ledgerly transactions as actual spending and exposes `/budget`.
 
 **Date:** 2026-10-09  
 **Status:** Approved direction; implementation pending  
