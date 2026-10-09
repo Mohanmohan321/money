@@ -22,7 +22,7 @@ test('budget workspace is responsive, keyboard operable, and refreshes saved dat
 
   await page.goto('/budget');
   await expect(page.getByRole('heading', { name: 'Budget overview' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Primary navigation' }).first()).toContainText('Budget');
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' }).first()).toContainText('Budget Calendar');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
   const calendarTab = page.getByRole('tab', { name: 'Calendar' });

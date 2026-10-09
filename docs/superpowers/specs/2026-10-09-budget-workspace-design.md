@@ -1,7 +1,7 @@
 # Ledgerly Budget Workspace Design
 
-**Date:** 2026-10-09  
-**Status:** Approved for implementation  
+**Date:** 2026-10-09
+**Status:** Approved for implementation
 **Route:** `/budget`
 
 ## Objective

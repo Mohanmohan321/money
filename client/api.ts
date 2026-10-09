@@ -29,6 +29,26 @@ import type {
   Vault,
   VaultContribution,
 } from '../shared/contracts';
+import type {
+  BudgetCalendarCategory,
+  BudgetCalendarExpense,
+  BudgetCalendarMonthConfiguration,
+  BudgetCalendarMonthView,
+  BudgetCalendarOverride,
+  BudgetCalendarReportSummary,
+  BudgetCalendarRule,
+  BudgetCalendarSettings,
+  BudgetCalendarTrends,
+  CreateBudgetCalendarCategoryInput,
+  CreateBudgetCalendarExpenseInput,
+  CreateBudgetCalendarRuleInput,
+  UpdateBudgetCalendarCategoryInput,
+  UpdateBudgetCalendarExpenseInput,
+  UpdateBudgetCalendarMonthInput,
+  UpdateBudgetCalendarRuleInput,
+  UpdateBudgetCalendarSettingsInput,
+  UpsertBudgetCalendarOverrideInput,
+} from '../shared/budget-calendar';
 import type { BudgetDateOverride, BudgetExpense, BudgetMonthWorkspace, BudgetSettings } from '../shared/budget-workspace';
 
 export class ApiError extends Error {
@@ -159,4 +179,79 @@ export const api = {
     const resource = type === 'transaction' ? 'transactions' : type;
     return apiRequest<{ deleted: boolean }>(`/api/${resource}/${id}`, { method: 'DELETE' });
   },
+  budgetCalendarMonth: (month: string) =>
+    apiRequest<BudgetCalendarMonthConfiguration>(`/api/budget-calendar/months/${month}`),
+  saveBudgetCalendarMonth: (month: string, input: UpdateBudgetCalendarMonthInput) =>
+    apiRequest<BudgetCalendarMonthConfiguration>(`/api/budget-calendar/months/${month}`, {
+      method: 'PUT', body: JSON.stringify(input),
+    }),
+  budgetCalendarView: (month: string) =>
+    apiRequest<BudgetCalendarMonthView>(`/api/budget-calendar/months/${month}/calendar`),
+  budgetCalendarSummary: (month: string, week?: string) =>
+    apiRequest<BudgetCalendarReportSummary>(
+      `/api/budget-calendar/months/${month}/summary${week ? `?week=${encodeURIComponent(week)}` : ''}`,
+    ),
+  budgetCalendarTrends: (month: string) =>
+    apiRequest<BudgetCalendarTrends>(`/api/budget-calendar/months/${month}/trends`),
+  budgetCalendarCategories: (includeArchived = false) =>
+    apiRequest<{ items: BudgetCalendarCategory[] }>(
+      `/api/budget-calendar/categories${includeArchived ? '?includeArchived=true' : ''}`,
+    ),
+  createBudgetCalendarCategory: (input: CreateBudgetCalendarCategoryInput) =>
+    apiRequest<BudgetCalendarCategory>('/api/budget-calendar/categories', {
+      method: 'POST', body: JSON.stringify(input),
+    }),
+  updateBudgetCalendarCategory: (id: string, input: UpdateBudgetCalendarCategoryInput) =>
+    apiRequest<BudgetCalendarCategory>(`/api/budget-calendar/categories/${id}`, {
+      method: 'PUT', body: JSON.stringify(input),
+    }),
+  deleteBudgetCalendarCategory: (id: string) =>
+    apiRequest<{ archived: boolean; deleted: boolean }>(`/api/budget-calendar/categories/${id}`, {
+      method: 'DELETE',
+    }),
+  budgetCalendarSettings: () =>
+    apiRequest<BudgetCalendarSettings>('/api/budget-calendar/settings'),
+  updateBudgetCalendarSettings: (input: UpdateBudgetCalendarSettingsInput) =>
+    apiRequest<BudgetCalendarSettings>('/api/budget-calendar/settings', {
+      method: 'PUT', body: JSON.stringify(input),
+    }),
+  budgetCalendarRules: () =>
+    apiRequest<{ items: BudgetCalendarRule[] }>('/api/budget-calendar/rules'),
+  createBudgetCalendarRule: (input: CreateBudgetCalendarRuleInput) =>
+    apiRequest<BudgetCalendarRule>('/api/budget-calendar/rules', {
+      method: 'POST', body: JSON.stringify(input),
+    }),
+  updateBudgetCalendarRule: (id: string, input: UpdateBudgetCalendarRuleInput) =>
+    apiRequest<BudgetCalendarRule>(`/api/budget-calendar/rules/${id}`, {
+      method: 'PUT', body: JSON.stringify(input),
+    }),
+  deleteBudgetCalendarRule: (id: string) =>
+    apiRequest<{ deleted: boolean }>(`/api/budget-calendar/rules/${id}`, { method: 'DELETE' }),
+  saveBudgetCalendarOverride: (date: string, input: UpsertBudgetCalendarOverrideInput) =>
+    apiRequest<BudgetCalendarOverride>(`/api/budget-calendar/overrides/${date}`, {
+      method: 'PUT', body: JSON.stringify(input),
+    }),
+  deleteBudgetCalendarOverride: (date: string) =>
+    apiRequest<{ deleted: boolean }>(`/api/budget-calendar/overrides/${date}`, {
+      method: 'DELETE',
+    }),
+  budgetCalendarDay: (date: string) =>
+    apiRequest<BudgetCalendarMonthView['days'][number]>(`/api/budget-calendar/days/${date}`),
+  createBudgetCalendarExpense: (input: CreateBudgetCalendarExpenseInput) =>
+    apiRequest<BudgetCalendarExpense>('/api/budget-calendar/expenses', {
+      method: 'POST', body: JSON.stringify(input),
+    }),
+  updateBudgetCalendarExpense: (id: string, input: UpdateBudgetCalendarExpenseInput) =>
+    apiRequest<BudgetCalendarExpense>(`/api/budget-calendar/expenses/${id}`, {
+      method: 'PUT', body: JSON.stringify(input),
+    }),
+  deleteBudgetCalendarExpense: (id: string) =>
+    apiRequest<{ deleted: boolean }>(`/api/budget-calendar/expenses/${id}`, {
+      method: 'DELETE',
+    }),
+  setBudgetCalendarDayRecord: (date: string, recordedZero: boolean) =>
+    apiRequest<{ date: string; recordState: 'recorded_zero' | 'missing' }>(
+      `/api/budget-calendar/days/${date}/record-state`,
+      { method: 'PUT', body: JSON.stringify({ recordedZero }) },
+    ),
 };

@@ -70,7 +70,7 @@ npm.cmd run db:migrate
 
 There is no SQLite, in-memory, or mock-data runtime fallback. Missing Neon configuration produces a clear startup error.
 
-Migration `0001_budgeting_foundation.sql` adds monthly budgets, income, spending categories, Vaults and contributions, assets, and liabilities. It backfills existing transactions to the `other` category before making the category required. Migration `0002_subscriptions.sql` additively creates persisted subscription reviews and does not alter financial records. Apply both before using the budgeting Dashboard or Analysis endpoints.
+Migration `0001_budgeting_foundation.sql` adds monthly budgets, income, spending categories, Vaults and contributions, assets, and liabilities. It backfills existing transactions to the `other` category before making the category required. Migration `0002_subscriptions.sql` additively creates persisted subscription reviews and does not alter financial records. Migration `0003_flaky_living_lightning.sql` is the previously deployed transaction-backed budget workspace foundation. Migration `0004_purple_xorn.sql` adds only the isolated `budget_calendar_*` tables and seeds their editable ₹10,000 allocation. Apply all committed migrations before using their related screens.
 
 ## Run locally
 
@@ -174,6 +174,20 @@ All `/api` routes except authentication require the signed `money_session` HTTP-
 | GET | `/api/analysis/monthly?month=&week=` | Monthly summary, categories, and Monday-Sunday activity |
 | GET | `/api/analysis/breakdown?year=&month=` | 12-month rail, calendar totals, and day activity |
 | GET | `/api/analysis/annual?year=` | Annual metrics, chart series, shares, and extrema |
+| GET, PUT | `/api/budget-calendar/settings` | Read or update week start and weekly food target |
+| GET, POST | `/api/budget-calendar/categories` | List or create isolated Budget Calendar categories |
+| PUT, DELETE | `/api/budget-calendar/categories/:id` | Update or archive an isolated category |
+| GET, PUT | `/api/budget-calendar/months/:month` | Read or replace a stable monthly allocation snapshot |
+| GET, POST | `/api/budget-calendar/rules` | List or create recurring daily-planning rules |
+| PUT, DELETE | `/api/budget-calendar/rules/:id` | Update or delete a planning rule |
+| PUT, DELETE | `/api/budget-calendar/overrides/:date` | Save or remove a local-date plan override |
+| GET | `/api/budget-calendar/days/:date` | Read a planned day, record state, and its expenses |
+| PUT | `/api/budget-calendar/days/:date/record-state` | Record explicit zero spending or restore missing state |
+| POST | `/api/budget-calendar/expenses` | Create an idempotent isolated calendar expense |
+| PUT, DELETE | `/api/budget-calendar/expenses/:id` | Edit or delete an isolated calendar expense |
+| GET | `/api/budget-calendar/months/:month/calendar` | Monthly calendar cells and persisted totals |
+| GET | `/api/budget-calendar/months/:month/summary` | Weekly/monthly metrics and projection |
+| GET | `/api/budget-calendar/months/:month/trends` | Daily, category, weekly, and cumulative chart data |
 
 Create requests ignore unknown client fields and never accept an authoritative ID or timestamp. PostgreSQL generates UUIDs and `created_at`. Amounts must be positive plain decimal strings with no exponent, no more than 18 integer digits, and no more than two fractional digits. Responses return money with exactly two fractional digits.
 
@@ -190,6 +204,17 @@ Date filters use `YYYY-MM-DD` in `APP_TIMEZONE`; `to` is inclusive. API timestam
 - Spending categories are Food, Travel, Shopping, Coffee, Entertainment, Health, Bills, and Other. The server's deterministic suggestion is used only when the user does not choose a category; persisted user choices stay authoritative.
 - Snap Receipt accepts non-empty JPEG, PNG, and WebP images up to 10 MiB. OCR is dynamically loaded and runs in a browser worker; the image and recognized text are never uploaded or persisted. The first scan downloads the English model from jsDelivr and subsequent scans can reuse the browser cache. Merchant, amount, and category remain editable, and no spending record exists until **Confirm spending** succeeds. There is no receipt server route and no OCR secret.
 - Subscription detection requires at least two normalized merchant matches. Weekly gaps are 5-9 days, monthly gaps are 25-35 days, and every amount must remain within 10% of the Decimal median. Two occurrences have medium confidence; three or more have high confidence. Confirmed monthly and annual projections are forecasts only: they never change actual Spending or add future calendar dates. The Breakdown calendar marks only persisted transactions whose normalized merchant currently has a confirmed review.
+
+## Budget Calendar semantics
+
+- **Budget Calendar** is a separate primary tab and data pipeline. Its expenses never create or alter `transactions`, History, Dashboard spending, or the existing Analysis reports.
+- Monthly category allocations are editable snapshots. The initial categories total ₹10,000: groceries ₹2,020, meals ₹5,280, petrol ₹500, snacks ₹1,200, and miscellaneous ₹1,000.
+- Allocations and cash spending are different. Recurring rules plus date overrides produce daily planned amounts; only saved Budget Calendar expenses contribute to actual spending.
+- Groceries are recorded as grocery purchases and are not duplicated as meal spending. The independent ₹1,900 weekly food target is a planning reference; the UI visibly reports its mismatch with the ₹5,280 monthly meal allocation.
+- A day is either missing, explicitly recorded as ₹0, or backed by one or more expenses. Missing dates are never treated as confirmed zero-spending days.
+- Money is persisted as PostgreSQL numeric values and transported as exact two-decimal strings. Display calculations use Decimal arithmetic; local dates remain `YYYY-MM-DD` strings without UTC conversion.
+- Recurring rules support daily, weekly, monthly, and selected-weekday schedules. Date-specific overrides replace the calculated plan. Months and leap years use their real calendar length.
+- The Trends tab uses persisted calendar data for planned-vs-actual, category share, weekly comparison, cumulative pace, utilization, and an explicitly labeled recorded-day projection.
 
 The `/analytics` bookmark remains valid, while the visible navigation label is **Analysis**. Its Monthly Budget, Budgeting Breakdown, and Annual Report tabs render only API-provided financial totals. Browser number conversion is limited to chart coordinates and progress geometry; displayed amounts come from decimal-string contracts.
 
