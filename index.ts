@@ -6,6 +6,8 @@ import { DrizzleAggregateStore } from './server/aggregates/drizzle-aggregate-sto
 import { createAggregateRouter } from './server/aggregates/routes';
 import { createApp } from './server/app';
 import { DrizzleSessionStore } from './server/auth/drizzle-session-store';
+import { DrizzleBudgetCalendarStore } from './server/budget-calendar/drizzle-budget-calendar-store';
+import { createBudgetCalendarRouter } from './server/budget-calendar/routes';
 import { DrizzleBudgetStore } from './server/budgets/drizzle-budget-store';
 import { createBudgetRouter } from './server/budgets/routes';
 import { loadConfig } from './server/config';
@@ -27,6 +29,7 @@ function createConfiguredApplication() {
     const database = createDatabase(config.databaseUrl);
     const recordStore = new DrizzleRecordStore(database);
     const budgetStore = new DrizzleBudgetStore(database);
+    const budgetCalendarStore = new DrizzleBudgetCalendarStore(database);
     const vaultStore = new DrizzleVaultStore(database);
     const netWorthStore = new DrizzleNetWorthStore(database);
     const aggregateStore = new DrizzleAggregateStore(database);
@@ -35,6 +38,10 @@ function createConfiguredApplication() {
     const protectedRouter = Router();
     protectedRouter.use(createRecordsRouter(recordStore, config.timezone));
     protectedRouter.use(createBudgetRouter(budgetStore, config.timezone));
+    protectedRouter.use(
+      '/budget-calendar',
+      createBudgetCalendarRouter(budgetCalendarStore, config.timezone),
+    );
     protectedRouter.use(createVaultRouter(vaultStore));
     protectedRouter.use(createNetWorthRouter(netWorthStore));
     protectedRouter.use(createPlanningRouter(planningStore, config.timezone));
