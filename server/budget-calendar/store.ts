@@ -1,12 +1,16 @@
 import type {
   BudgetCalendarCategory,
+  BudgetCalendarDay,
+  BudgetCalendarExpense,
   BudgetCalendarMonthConfiguration,
   BudgetCalendarOverride,
   BudgetCalendarRule,
   BudgetCalendarSettings,
   CreateBudgetCalendarCategoryInput,
+  CreateBudgetCalendarExpenseInput,
   CreateBudgetCalendarRuleInput,
   UpdateBudgetCalendarCategoryInput,
+  UpdateBudgetCalendarExpenseInput,
   UpdateBudgetCalendarMonthInput,
   UpdateBudgetCalendarRuleInput,
   UpdateBudgetCalendarSettingsInput,
@@ -40,4 +44,18 @@ export interface BudgetCalendarStore {
     input: UpsertBudgetCalendarOverrideInput,
   ): Promise<BudgetCalendarOverride>;
   deleteOverride(date: string): Promise<boolean>;
+  getDay(date: string, today: string): Promise<BudgetCalendarDay>;
+  createExpense(input: CreateBudgetCalendarExpenseInput): Promise<
+    | { outcome: 'created' | 'replayed'; expense: BudgetCalendarExpense }
+    | { outcome: 'invalid_category' }
+  >;
+  updateExpense(
+    id: string,
+    input: UpdateBudgetCalendarExpenseInput,
+  ): Promise<BudgetCalendarExpense | 'invalid_category' | undefined>;
+  deleteExpense(id: string): Promise<boolean>;
+  setDayRecordState(
+    date: string,
+    recordedZero: boolean,
+  ): Promise<'updated' | 'expenses_exist'>;
 }

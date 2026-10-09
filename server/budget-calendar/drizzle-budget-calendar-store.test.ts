@@ -94,4 +94,38 @@ describe('DrizzleBudgetCalendarStore configuration', () => {
     expect(text).toContain('budget_calendar_rules');
     expect(text).not.toMatch(/transactions|monthly_budgets/);
   });
+
+  it('replays an idempotency key from one isolated expense statement', async () => {
+    const statements: SQL[] = [];
+    const execute = vi.fn(async (statement: SQL) => {
+      statements.push(statement);
+      return { rows: [{
+        id: '00000000-0000-4000-8000-000000000301',
+        expenseDate: '2026-10-09', categoryId: categoryRow.id, categoryName: 'Lunch',
+        amount: '250.00', description: 'Lunch', notes: null,
+        idempotencyKey: '4aa2d68c-d9dd-44da-bb79-c987829e2f50',
+        createdAt: now, updatedAt: now, created: false,
+      }] };
+    });
+    const store = new DrizzleBudgetCalendarStore({ execute } as unknown as AppDatabase);
+
+    await expect(store.createExpense({
+      expenseDate: '2026-10-09', categoryId: categoryRow.id, amount: '250.00',
+      description: 'Lunch', idempotencyKey: '4aa2d68c-d9dd-44da-bb79-c987829e2f50',
+    })).resolves.toEqual({
+      outcome: 'replayed',
+      expense: {
+        id: '00000000-0000-4000-8000-000000000301',
+        expenseDate: '2026-10-09', categoryId: categoryRow.id, categoryName: 'Lunch',
+        amount: '250.00', description: 'Lunch',
+        idempotencyKey: '4aa2d68c-d9dd-44da-bb79-c987829e2f50',
+        createdAt: now.toISOString(), updatedAt: now.toISOString(),
+      },
+    });
+    expect(statements).toHaveLength(1);
+    const text = emitted(statements[0]);
+    expect(text).toContain('budget_calendar_expenses');
+    expect(text).toContain('budget_calendar_day_records');
+    expect(text).not.toMatch(/transactions|monthly_budgets/);
+  });
 });

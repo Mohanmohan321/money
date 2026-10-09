@@ -4,13 +4,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type {
   BudgetCalendarCategory,
+  BudgetCalendarDay,
+  BudgetCalendarExpense,
   BudgetCalendarMonthConfiguration,
   BudgetCalendarOverride,
   BudgetCalendarRule,
   BudgetCalendarSettings,
   CreateBudgetCalendarCategoryInput,
+  CreateBudgetCalendarExpenseInput,
   CreateBudgetCalendarRuleInput,
   UpdateBudgetCalendarCategoryInput,
+  UpdateBudgetCalendarExpenseInput,
   UpdateBudgetCalendarMonthInput,
   UpdateBudgetCalendarRuleInput,
   UpdateBudgetCalendarSettingsInput,
@@ -54,6 +58,8 @@ class MemoryBudgetCalendarStore implements BudgetCalendarStore {
   months = new Map<string, BudgetCalendarMonthConfiguration>();
   rules: BudgetCalendarRule[] = [];
   overrides = new Map<string, BudgetCalendarOverride>();
+  expenses: BudgetCalendarExpense[] = [];
+  recordedZeroDates = new Set<string>();
 
   async getSettings() { return this.settings; }
   async updateSettings(input: UpdateBudgetCalendarSettingsInput) {
@@ -129,6 +135,61 @@ class MemoryBudgetCalendarStore implements BudgetCalendarStore {
     return saved;
   }
   async deleteOverride(date: string) { return this.overrides.delete(date); }
+  async getDay(date: string): Promise<BudgetCalendarDay> {
+    const expenses = this.expenses.filter((item) => item.expenseDate === date);
+    const actual = expenses.reduce((sum, item) => sum + Number(item.amount), 0).toFixed(2);
+    const recordState = expenses.length > 0
+      ? 'recorded_with_expenses' as const
+      : this.recordedZeroDates.has(date) ? 'recorded_zero' as const : 'missing' as const;
+    return {
+      date, plannedAmount: '200.00', planSource: 'calculated', actualAmount: actual,
+      remaining: (200 - Number(actual)).toFixed(2),
+      variance: (Number(actual) - 200).toFixed(2),
+      utilization: (Number(actual) / 2).toFixed(2),
+      status: recordState === 'missing' ? 'missing' : Number(actual) > 200 ? 'over' : Number(actual) === 200 ? 'on' : 'under',
+      recordState, expenses,
+    };
+  }
+  async createExpense(input: CreateBudgetCalendarExpenseInput) {
+    if (!this.categories.some(({ id, active }) => id === input.categoryId && active)) {
+      return { outcome: 'invalid_category' as const };
+    }
+    const existing = this.expenses.find(({ idempotencyKey }) => idempotencyKey === input.idempotencyKey);
+    if (existing) return { outcome: 'replayed' as const, expense: existing };
+    const selectedCategory = this.categories.find(({ id }) => id === input.categoryId)!;
+    const expense: BudgetCalendarExpense = {
+      id: `00000000-0000-4000-8000-${String(300 + this.expenses.length).padStart(12, '0')}`,
+      ...input, categoryName: selectedCategory.name, createdAt: now, updatedAt: now,
+    };
+    this.expenses.push(expense);
+    this.recordedZeroDates.delete(input.expenseDate);
+    return { outcome: 'created' as const, expense };
+  }
+  async updateExpense(id: string, input: UpdateBudgetCalendarExpenseInput) {
+    if (!this.categories.some(({ id: candidate, active }) => candidate === input.categoryId && active)) {
+      return 'invalid_category' as const;
+    }
+    const index = this.expenses.findIndex((item) => item.id === id);
+    if (index < 0) return undefined;
+    const selectedCategory = this.categories.find(({ id: candidate }) => candidate === input.categoryId)!;
+    this.expenses[index] = {
+      ...this.expenses[index], ...input, categoryName: selectedCategory.name, updatedAt: now,
+    };
+    return this.expenses[index];
+  }
+  async deleteExpense(id: string) {
+    const before = this.expenses.length;
+    this.expenses = this.expenses.filter((item) => item.id !== id);
+    return this.expenses.length < before;
+  }
+  async setDayRecordState(date: string, recordedZero: boolean) {
+    if (recordedZero && this.expenses.some((item) => item.expenseDate === date)) {
+      return 'expenses_exist' as const;
+    }
+    if (recordedZero) this.recordedZeroDates.add(date);
+    else this.recordedZeroDates.delete(date);
+    return 'updated' as const;
+  }
 }
 
 const config: AppConfig = {
@@ -223,6 +284,71 @@ describe('budget calendar configuration API', () => {
     const call = method === 'get' ? agent.get(path) : agent.put(path).send({});
     await call.expect(400).expect(({ body }) => {
       expect(body.error.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  it('creates multiple daily expenses and replays an idempotent retry without duplication', async () => {
+    const input = {
+      expenseDate: '2026-10-09', categoryId, amount: '150', description: 'Lunch',
+      idempotencyKey: '4aa2d68c-d9dd-44da-bb79-c987829e2f50',
+    };
+    const first = await agent.post('/api/budget-calendar/expenses').send(input).expect(201);
+    const replay = await agent.post('/api/budget-calendar/expenses').send(input).expect(200);
+    expect(replay.body.data.id).toBe(first.body.data.id);
+    await agent.post('/api/budget-calendar/expenses').send({
+      ...input, amount: '100', categoryId: secondCategoryId,
+      idempotencyKey: '4aa2d68c-d9dd-44da-bb79-c987829e2f51',
+    }).expect(201);
+    expect(store.expenses).toHaveLength(2);
+    await agent.get('/api/budget-calendar/days/2026-10-09').expect(200).expect(({ body }) => {
+      expect(body.data).toEqual(expect.objectContaining({
+        actualAmount: '250.00', recordState: 'recorded_with_expenses', status: 'over',
+      }));
+    });
+  });
+
+  it('edits and deletes an expense without creating an existing transaction', async () => {
+    const created = await agent.post('/api/budget-calendar/expenses').send({
+      expenseDate: '2026-10-09', categoryId, amount: '150',
+      idempotencyKey: '4aa2d68c-d9dd-44da-bb79-c987829e2f52',
+    }).expect(201);
+    await agent.put(`/api/budget-calendar/expenses/${created.body.data.id}`).send({
+      expenseDate: '2026-10-10', categoryId: secondCategoryId, amount: '75', notes: 'Edited',
+    }).expect(200).expect(({ body }) => {
+      expect(body.data).toEqual(expect.objectContaining({
+        expenseDate: '2026-10-10', categoryName: 'Snacks', amount: '75.00', notes: 'Edited',
+      }));
+    });
+    await agent.delete(`/api/budget-calendar/expenses/${created.body.data.id}`).expect(200);
+    await agent.delete(`/api/budget-calendar/expenses/${created.body.data.id}`).expect(404);
+  });
+
+  it('distinguishes missing and explicit zero and rejects zero while expenses exist', async () => {
+    await agent.get('/api/budget-calendar/days/2026-10-08').expect(200).expect(({ body }) => {
+      expect(body.data.recordState).toBe('missing');
+    });
+    await agent.put('/api/budget-calendar/days/2026-10-08/record-state')
+      .send({ recordedZero: true }).expect(200);
+    await agent.get('/api/budget-calendar/days/2026-10-08').expect(200).expect(({ body }) => {
+      expect(body.data.recordState).toBe('recorded_zero');
+    });
+
+    await agent.post('/api/budget-calendar/expenses').send({
+      expenseDate: '2026-10-09', categoryId, amount: '150',
+      idempotencyKey: '4aa2d68c-d9dd-44da-bb79-c987829e2f53',
+    }).expect(201);
+    await agent.put('/api/budget-calendar/days/2026-10-09/record-state')
+      .send({ recordedZero: true }).expect(409).expect(({ body }) => {
+        expect(body.error.code).toBe('BUDGET_CALENDAR_DAY_HAS_EXPENSES');
+      });
+  });
+
+  it('rejects inactive or missing expense categories', async () => {
+    await agent.post('/api/budget-calendar/expenses').send({
+      expenseDate: '2026-10-09', categoryId: '00000000-0000-4000-8000-000000009999',
+      amount: '150', idempotencyKey: '4aa2d68c-d9dd-44da-bb79-c987829e2f54',
+    }).expect(400).expect(({ body }) => {
+      expect(body.error.code).toBe('BUDGET_CALENDAR_CATEGORY_INVALID');
     });
   });
 });

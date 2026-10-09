@@ -3,6 +3,8 @@ import { sql } from 'drizzle-orm';
 
 import type {
   BudgetCalendarCategory,
+  BudgetCalendarDay,
+  BudgetCalendarExpense,
   BudgetCalendarFrequency,
   BudgetCalendarGroup,
   BudgetCalendarMonthCategory,
@@ -11,14 +13,17 @@ import type {
   BudgetCalendarRule,
   BudgetCalendarSettings,
   CreateBudgetCalendarCategoryInput,
+  CreateBudgetCalendarExpenseInput,
   CreateBudgetCalendarRuleInput,
   UpdateBudgetCalendarCategoryInput,
+  UpdateBudgetCalendarExpenseInput,
   UpdateBudgetCalendarMonthInput,
   UpdateBudgetCalendarRuleInput,
   UpdateBudgetCalendarSettingsInput,
   UpsertBudgetCalendarOverrideInput,
 } from '../../shared/budget-calendar';
 import type { AppDatabase } from '../db/client';
+import { aggregateBudgetMonth, buildPlannedDays } from './calculations';
 import type { BudgetCalendarStore } from './store';
 
 type TimestampValue = Date | string;
@@ -70,6 +75,20 @@ interface OverrideRow {
   note: string | null;
   createdAt: TimestampValue;
   updatedAt: TimestampValue;
+}
+
+interface ExpenseRow {
+  id: string;
+  expenseDate: string;
+  categoryId: string;
+  categoryName: string;
+  amount: string;
+  description: string | null;
+  notes: string | null;
+  idempotencyKey: string;
+  createdAt: TimestampValue;
+  updatedAt: TimestampValue;
+  created?: boolean;
 }
 
 function iso(value: TimestampValue): string {
@@ -134,6 +153,21 @@ function asOverride(row: OverrideRow): BudgetCalendarOverride {
     date: row.date,
     plannedAmount: String(row.plannedAmount),
     ...(row.note ? { note: row.note } : {}),
+    createdAt: iso(row.createdAt),
+    updatedAt: iso(row.updatedAt),
+  };
+}
+
+function asExpense(row: ExpenseRow): BudgetCalendarExpense {
+  return {
+    id: row.id,
+    expenseDate: row.expenseDate,
+    categoryId: row.categoryId,
+    categoryName: row.categoryName,
+    amount: String(row.amount),
+    ...(row.description ? { description: row.description } : {}),
+    ...(row.notes ? { notes: row.notes } : {}),
+    idempotencyKey: row.idempotencyKey,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
@@ -368,5 +402,152 @@ export class DrizzleBudgetCalendarStore implements BudgetCalendarStore {
       DELETE FROM budget_calendar_overrides WHERE date = ${date}::date RETURNING date
     `);
     return result.rows.length > 0;
+  }
+
+  async getDay(date: string, today: string): Promise<BudgetCalendarDay> {
+    const month = date.slice(0, 7);
+    const [configuration, rules, overrideResult, expenseResult, dayRecordResult] = await Promise.all([
+      this.getMonth(month),
+      this.listRules(),
+      this.database.execute(sql<OverrideRow>`
+        SELECT date, planned_amount AS "plannedAmount", note,
+          created_at AS "createdAt", updated_at AS "updatedAt"
+        FROM budget_calendar_overrides WHERE date = ${date}::date
+      `),
+      this.database.execute(sql<ExpenseRow>`
+        SELECT expense.id, expense.expense_date AS "expenseDate",
+          expense.category_id AS "categoryId", category.name AS "categoryName",
+          expense.amount, expense.description, expense.notes,
+          expense.idempotency_key AS "idempotencyKey",
+          expense.created_at AS "createdAt", expense.updated_at AS "updatedAt"
+        FROM budget_calendar_expenses expense
+        INNER JOIN budget_calendar_categories category ON category.id = expense.category_id
+        WHERE expense.expense_date = ${date}::date
+        ORDER BY expense.created_at, expense.id
+      `),
+      this.database.execute(sql<{ date: string }>`
+        SELECT date FROM budget_calendar_day_records
+        WHERE date = ${date}::date AND recorded_zero = true
+      `),
+    ]);
+    const overrides = rows<OverrideRow>(overrideResult).map(asOverride);
+    const expenses = rows<ExpenseRow>(expenseResult).map(asExpense);
+    const plannedDays = buildPlannedDays({ month, rules, overrides });
+    const result = aggregateBudgetMonth({
+      month,
+      today,
+      overallLimit: configuration.overallLimit,
+      plannedDays,
+      expenses,
+      recordedZeroDates: new Set(rows<{ date: string }>(dayRecordResult).map((row) => row.date)),
+    });
+    const selected = result.days.find((day) => day.date === date);
+    if (!selected) throw new Error('Budget Calendar date is outside its month');
+    return selected;
+  }
+
+  async createExpense(input: CreateBudgetCalendarExpenseInput): Promise<
+    | { outcome: 'created' | 'replayed'; expense: BudgetCalendarExpense }
+    | { outcome: 'invalid_category' }
+  > {
+    const result = await this.database.execute(sql<ExpenseRow>`
+      WITH selected_category AS (
+        SELECT id, name FROM budget_calendar_categories
+        WHERE id = ${input.categoryId}::uuid AND active = true
+      ), existing AS (
+        SELECT expense.*, category.name AS category_name
+        FROM budget_calendar_expenses expense
+        INNER JOIN budget_calendar_categories category ON category.id = expense.category_id
+        WHERE expense.idempotency_key = ${input.idempotencyKey}::uuid
+      ), inserted AS (
+        INSERT INTO budget_calendar_expenses
+          (expense_date, category_id, amount, description, notes, idempotency_key)
+        SELECT ${input.expenseDate}::date, selected_category.id, ${input.amount},
+          ${input.description ?? null}, ${input.notes ?? null}, ${input.idempotencyKey}::uuid
+        FROM selected_category
+        WHERE NOT EXISTS (SELECT 1 FROM existing)
+        ON CONFLICT (idempotency_key) DO NOTHING
+        RETURNING *
+      ), cleared AS (
+        DELETE FROM budget_calendar_day_records
+        WHERE date = ${input.expenseDate}::date AND EXISTS (SELECT 1 FROM inserted)
+      )
+      SELECT inserted.id, inserted.expense_date AS "expenseDate",
+        inserted.category_id AS "categoryId", selected_category.name AS "categoryName",
+        inserted.amount, inserted.description, inserted.notes,
+        inserted.idempotency_key AS "idempotencyKey",
+        inserted.created_at AS "createdAt", inserted.updated_at AS "updatedAt", true AS created
+      FROM inserted INNER JOIN selected_category ON selected_category.id = inserted.category_id
+      UNION ALL
+      SELECT existing.id, existing.expense_date AS "expenseDate",
+        existing.category_id AS "categoryId", existing.category_name AS "categoryName",
+        existing.amount, existing.description, existing.notes,
+        existing.idempotency_key AS "idempotencyKey",
+        existing.created_at AS "createdAt", existing.updated_at AS "updatedAt", false AS created
+      FROM existing
+      LIMIT 1
+    `);
+    const row = rows<ExpenseRow>(result)[0];
+    if (!row) return { outcome: 'invalid_category' };
+    return { outcome: row.created ? 'created' : 'replayed', expense: asExpense(row) };
+  }
+
+  async updateExpense(
+    id: string,
+    input: UpdateBudgetCalendarExpenseInput,
+  ): Promise<BudgetCalendarExpense | 'invalid_category' | undefined> {
+    const result = await this.database.execute(sql<ExpenseRow>`
+      UPDATE budget_calendar_expenses expense
+      SET expense_date = ${input.expenseDate}::date, category_id = category.id,
+        amount = ${input.amount}, description = ${input.description ?? null},
+        notes = ${input.notes ?? null}, updated_at = now()
+      FROM budget_calendar_categories category
+      WHERE expense.id = ${id}::uuid AND category.id = ${input.categoryId}::uuid
+        AND category.active = true
+      RETURNING expense.id, expense.expense_date AS "expenseDate",
+        expense.category_id AS "categoryId", category.name AS "categoryName",
+        expense.amount, expense.description, expense.notes,
+        expense.idempotency_key AS "idempotencyKey",
+        expense.created_at AS "createdAt", expense.updated_at AS "updatedAt"
+    `);
+    const row = rows<ExpenseRow>(result)[0];
+    if (row) return asExpense(row);
+    const categoryResult = await this.database.execute(sql<{ active: boolean }>`
+      SELECT active FROM budget_calendar_categories
+      WHERE id = ${input.categoryId}::uuid AND active = true
+    `);
+    return categoryResult.rows.length === 0 ? 'invalid_category' : undefined;
+  }
+
+  async deleteExpense(id: string): Promise<boolean> {
+    const result = await this.database.execute(sql<{ id: string }>`
+      DELETE FROM budget_calendar_expenses WHERE id = ${id}::uuid RETURNING id
+    `);
+    return result.rows.length > 0;
+  }
+
+  async setDayRecordState(
+    date: string,
+    recordedZero: boolean,
+  ): Promise<'updated' | 'expenses_exist'> {
+    if (!recordedZero) {
+      await this.database.execute(sql`
+        DELETE FROM budget_calendar_day_records WHERE date = ${date}::date
+      `);
+      return 'updated';
+    }
+    const result = await this.database.execute(sql<{ outcome: 'updated' | 'expenses_exist' }>`
+      WITH expenses AS (
+        SELECT 1 FROM budget_calendar_expenses WHERE expense_date = ${date}::date LIMIT 1
+      ), written AS (
+        INSERT INTO budget_calendar_day_records (date, recorded_zero)
+        SELECT ${date}::date, true WHERE NOT EXISTS (SELECT 1 FROM expenses)
+        ON CONFLICT (date) DO UPDATE SET recorded_zero = true, updated_at = now()
+        RETURNING date
+      )
+      SELECT CASE WHEN EXISTS (SELECT 1 FROM expenses)
+        THEN 'expenses_exist'::text ELSE 'updated'::text END AS outcome
+    `);
+    return rows<{ outcome: 'updated' | 'expenses_exist' }>(result)[0]?.outcome ?? 'updated';
   }
 }

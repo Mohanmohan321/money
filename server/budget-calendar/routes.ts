@@ -1,15 +1,19 @@
 import { Router } from 'express';
+import { DateTime } from 'luxon';
 import { z } from 'zod';
 
 import {
   budgetCalendarDateSchema,
   budgetCalendarMonthSchema,
   createBudgetCalendarCategorySchema,
+  createBudgetCalendarExpenseSchema,
   createBudgetCalendarRuleSchema,
   updateBudgetCalendarCategorySchema,
+  updateBudgetCalendarExpenseSchema,
   updateBudgetCalendarMonthSchema,
   updateBudgetCalendarRuleSchema,
   updateBudgetCalendarSettingsSchema,
+  setBudgetCalendarDayRecordSchema,
   upsertBudgetCalendarOverrideSchema,
 } from '../../shared/budget-calendar';
 import { AppError } from '../middleware/errors';
@@ -19,7 +23,7 @@ const idSchema = z.string().uuid('ID must be a UUID');
 
 export function createBudgetCalendarRouter(
   store: BudgetCalendarStore,
-  _timezone: string,
+  timezone: string,
 ): Router {
   const router = Router();
 
@@ -117,6 +121,79 @@ export function createBudgetCalendarRouter(
       throw new AppError(404, 'BUDGET_CALENDAR_OVERRIDE_NOT_FOUND', 'Budget override not found');
     }
     response.json({ success: true, data: { deleted: true } });
+  });
+
+  router.get('/days/:date', async (request, response) => {
+    const date = budgetCalendarDateSchema.parse(request.params.date);
+    const today = DateTime.now().setZone(timezone).toISODate();
+    if (!today) throw new AppError(500, 'INVALID_TIMEZONE', 'Application timezone is invalid');
+    response.json({ success: true, data: await store.getDay(date, today) });
+  });
+
+  router.post('/expenses', async (request, response) => {
+    const input = createBudgetCalendarExpenseSchema.parse(request.body);
+    const result = await store.createExpense(input);
+    if (result.outcome === 'invalid_category') {
+      throw new AppError(
+        400,
+        'BUDGET_CALENDAR_CATEGORY_INVALID',
+        'Budget Calendar category is missing or inactive',
+      );
+    }
+    response.status(result.outcome === 'created' ? 201 : 200).json({
+      success: true,
+      data: result.expense,
+    });
+  });
+
+  router.put('/expenses/:id', async (request, response) => {
+    const id = idSchema.parse(request.params.id);
+    const input = updateBudgetCalendarExpenseSchema.parse(request.body);
+    const result = await store.updateExpense(id, input);
+    if (result === 'invalid_category') {
+      throw new AppError(
+        400,
+        'BUDGET_CALENDAR_CATEGORY_INVALID',
+        'Budget Calendar category is missing or inactive',
+      );
+    }
+    if (!result) {
+      throw new AppError(
+        404,
+        'BUDGET_CALENDAR_EXPENSE_NOT_FOUND',
+        'Budget Calendar expense not found',
+      );
+    }
+    response.json({ success: true, data: result });
+  });
+
+  router.delete('/expenses/:id', async (request, response) => {
+    const id = idSchema.parse(request.params.id);
+    if (!(await store.deleteExpense(id))) {
+      throw new AppError(
+        404,
+        'BUDGET_CALENDAR_EXPENSE_NOT_FOUND',
+        'Budget Calendar expense not found',
+      );
+    }
+    response.json({ success: true, data: { deleted: true } });
+  });
+
+  router.put('/days/:date/record-state', async (request, response) => {
+    const date = budgetCalendarDateSchema.parse(request.params.date);
+    const { recordedZero } = setBudgetCalendarDayRecordSchema.parse(request.body);
+    const outcome = await store.setDayRecordState(date, recordedZero);
+    if (outcome === 'expenses_exist') {
+      throw new AppError(
+        409,
+        'BUDGET_CALENDAR_DAY_HAS_EXPENSES',
+        'A day with expenses cannot be recorded as zero spending',
+      );
+    }
+    response.json({
+      success: true,
+      data: { date, recordState: recordedZero ? 'recorded_zero' : 'missing' },
+    });
   });
 
   return router;
