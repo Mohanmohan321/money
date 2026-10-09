@@ -153,6 +153,37 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
   .budget-day-sheet { width: min(34rem, 46vw); max-height: 100vh; border-radius: 1.4rem 0 0 1.4rem; }
 }
 
+.budget-configuration { display: grid; gap: 1rem; }
+.configuration-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; padding: 0.9rem; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }
+.configuration-summary strong { width: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 1.15rem; }
+.configuration-summary span { padding: 0.35rem 0.55rem; border-radius: 999px; background: #e8eeea; color: var(--muted); font-size: 0.7rem; }
+.allocation-form, .planning-settings-form, .rule-form, .override-form, .add-category-form { display: grid; gap: 0.55rem; }
+.allocation-form > label, .planning-settings-form label, .rule-form > label, .override-form label, .add-category-form label { font-size: 0.76rem; font-weight: 750; }
+.allocation-form input, .allocation-form select, .planning-settings-form input, .planning-settings-form select, .rule-form input, .rule-form select, .override-form input, .add-category-form input, .add-category-form select { width: 100%; min-height: 3rem; padding: 0.65rem; border: 1px solid var(--line); border-radius: 0.7rem; background: white; }
+.allocation-list { display: grid; gap: 0.65rem; }
+.allocation-list article { display: grid; grid-template-columns: 1fr; gap: 0.55rem; padding: 0.85rem; border: 1px solid var(--line); border-radius: 0.9rem; background: var(--paper); }
+.allocation-title { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.allocation-title span { color: var(--muted); font-size: 0.68rem; text-transform: capitalize; }
+.checkbox-label { display: flex; align-items: center; gap: 0.45rem; font-size: 0.72rem; }
+.checkbox-label input { width: 1.1rem; min-height: 1.1rem; }
+.allocation-actions { display: flex; justify-content: flex-end; gap: 0.7rem; }
+.text-button { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0; border: 0; background: transparent; color: var(--transaction); font-size: 0.72rem; font-weight: 750; }
+.text-button.danger { color: var(--danger); }
+.text-button svg { width: 0.9rem; }
+.planning-note { padding: 0.8rem; border: 1px solid var(--line); border-radius: 0.8rem; background: var(--income-soft); color: var(--income); font-size: 0.76rem; line-height: 1.5; }
+.planning-note.warning { border-color: #e4c59e; background: #fbf0e2; color: #85501a; }
+.rule-form fieldset { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.45rem; margin: 0; padding: 0.7rem; border: 1px solid var(--line); border-radius: 0.7rem; }
+.rule-form legend { padding: 0 0.3rem; color: var(--muted); font-size: 0.7rem; font-weight: 750; }
+.rule-date-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+.rule-list { display: grid; gap: 0.45rem; }
+.rule-list article { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; border: 1px solid var(--line); border-radius: 0.8rem; background: var(--paper); }
+.rule-list span { display: block; margin-top: 0.2rem; color: var(--muted); font-size: 0.7rem; text-transform: capitalize; }
+.override-preview { margin: 0; padding: 0.7rem; border-radius: 0.7rem; background: var(--transaction-soft); color: var(--transaction); font-size: 0.76rem; }
+@media (min-width: 760px) {
+  .allocation-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .planning-settings-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; }
+}
+
 .icon-button { width: 2.65rem; height: 2.65rem; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--ink); }
 .icon-button svg { width: 1.1rem; }
 .icon-button.subtle { width: 2.75rem; height: 2.75rem; border-color: transparent; color: var(--muted); }

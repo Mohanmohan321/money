@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { BudgetCalendarCategory, BudgetCalendarMonthView } from '../../shared/budget-calendar';
 import { api, ApiError } from '../api';
 import { BudgetCalendar } from '../components/budget-calendar/BudgetCalendar';
+import { BudgetConfiguration } from '../components/budget-calendar/BudgetConfiguration';
 import { BudgetDayEditor } from '../components/budget-calendar/BudgetDayEditor';
 
 const tabs = ['Calendar', 'Trends', 'Categories', 'Rules'] as const;
@@ -64,6 +65,7 @@ export function BudgetCalendarPage() {
       <div className="budget-calendar-tabs" role="tablist" aria-label="Budget Calendar views">
         {tabs.map((tab, index) => (
           <button
+            key={tab}
             id={`budget-calendar-tab-${index}`}
             type="button"
             role="tab"
@@ -95,8 +97,15 @@ export function BudgetCalendarPage() {
             onSelectDate={setSelectedDate}
           />
         )}
-        {result.data && selectedTab !== 'Calendar' && (
+        {result.data && selectedTab === 'Trends' && (
           <div className="compact-empty">{selectedTab} setup is ready.</div>
+        )}
+        {result.data && (selectedTab === 'Categories' || selectedTab === 'Rules') && (
+          <BudgetConfiguration
+            month={month}
+            section={selectedTab === 'Categories' ? 'categories' : 'rules'}
+            onMutationComplete={() => setRevision((value) => value + 1)}
+          />
         )}
       </section>
       {result.data && selectedDate && result.data.days.find((day) => day.date === selectedDate) && (

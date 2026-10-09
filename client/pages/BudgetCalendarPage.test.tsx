@@ -36,8 +36,20 @@ describe('BudgetCalendarPage', () => {
   it('loads the isolated calendar and exposes keyboard-operable internal tabs', async () => {
     const paths: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      paths.push(String(input));
-      return response(view);
+      const path = String(input);
+      paths.push(path);
+      if (path.endsWith('/calendar')) return response(view);
+      if (path.endsWith('/categories?includeArchived=true')) return response({ items: [] });
+      if (path.endsWith('/settings')) return response({
+        weekStart: 1, weeklyFoodTarget: '1900.00',
+        createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+      });
+      if (path.endsWith('/rules')) return response({ items: [] });
+      if (path.endsWith('/months/2026-10')) return response({
+        month: '2026-10', overallLimit: '10000.00', categories: [],
+        createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+      });
+      return response({});
     }));
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     render(<BudgetCalendarPage />);
@@ -55,7 +67,13 @@ describe('BudgetCalendarPage', () => {
     expect(categories).toHaveFocus();
     await user.keyboard('{ArrowRight}');
     expect(rules).toHaveFocus();
-    expect(paths).toEqual(['/api/budget-calendar/months/2026-10/calendar']);
+    expect(paths).toEqual(expect.arrayContaining([
+      '/api/budget-calendar/months/2026-10/calendar',
+      '/api/budget-calendar/months/2026-10',
+      '/api/budget-calendar/categories?includeArchived=true',
+      '/api/budget-calendar/settings',
+      '/api/budget-calendar/rules',
+    ]));
     expect(paths.some((path) => /api\/(history|analysis|transactions)/.test(path))).toBe(false);
   });
 });
