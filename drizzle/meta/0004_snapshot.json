@@ -1,6 +1,6 @@
 {
-  "id": "2ad3fc7f-424f-4b3c-a2a6-631e8db477e0",
-  "prevId": "2a11ac97-ae32-49ea-8ba0-9b722399330d",
+  "id": "547b5f74-7d92-4e2f-90e4-afdeed65ab69",
+  "prevId": "2ad3fc7f-424f-4b3c-a2a6-631e8db477e0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -63,6 +63,579 @@
         "assets_current_value_positive": {
           "name": "assets_current_value_positive",
           "value": "\"assets\".\"current_value\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.budget_calendar_categories": {
+      "name": "budget_calendar_categories",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "seed_key": {
+          "name": "seed_key",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(80)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "group_name": {
+          "name": "group_name",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "monthly_amount": {
+          "name": "monthly_amount",
+          "type": "numeric(20, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "included_in_overall_budget": {
+          "name": "included_in_overall_budget",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "budget_calendar_categories_active_order_idx": {
+          "name": "budget_calendar_categories_active_order_idx",
+          "columns": [
+            {
+              "expression": "active",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sort_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "budget_calendar_categories_seed_key_unique": {
+          "name": "budget_calendar_categories_seed_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "seed_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "budget_calendar_categories_amount_non_negative": {
+          "name": "budget_calendar_categories_amount_non_negative",
+          "value": "\"budget_calendar_categories\".\"monthly_amount\" >= 0"
+        },
+        "budget_calendar_categories_sort_order_non_negative": {
+          "name": "budget_calendar_categories_sort_order_non_negative",
+          "value": "\"budget_calendar_categories\".\"sort_order\" >= 0"
+        },
+        "budget_calendar_categories_group_valid": {
+          "name": "budget_calendar_categories_group_valid",
+          "value": "\"budget_calendar_categories\".\"group_name\" in ('grocery', 'meal', 'petrol', 'snacks', 'miscellaneous', 'other')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.budget_calendar_day_records": {
+      "name": "budget_calendar_day_records",
+      "schema": "",
+      "columns": {
+        "date": {
+          "name": "date",
+          "type": "date",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "recorded_zero": {
+          "name": "recorded_zero",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.budget_calendar_expenses": {
+      "name": "budget_calendar_expenses",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "expense_date": {
+          "name": "expense_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "numeric(20, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "budget_calendar_expenses_date_idx": {
+          "name": "budget_calendar_expenses_date_idx",
+          "columns": [
+            {
+              "expression": "expense_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "budget_calendar_expenses_category_idx": {
+          "name": "budget_calendar_expenses_category_idx",
+          "columns": [
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "budget_calendar_expenses_category_id_budget_calendar_categories_id_fk": {
+          "name": "budget_calendar_expenses_category_id_budget_calendar_categories_id_fk",
+          "tableFrom": "budget_calendar_expenses",
+          "tableTo": "budget_calendar_categories",
+          "columnsFrom": [
+            "category_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "budget_calendar_expenses_idempotency_key_unique": {
+          "name": "budget_calendar_expenses_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idempotency_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "budget_calendar_expenses_amount_positive": {
+          "name": "budget_calendar_expenses_amount_positive",
+          "value": "\"budget_calendar_expenses\".\"amount\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.budget_calendar_months": {
+      "name": "budget_calendar_months",
+      "schema": "",
+      "columns": {
+        "month": {
+          "name": "month",
+          "type": "varchar(7)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "overall_limit": {
+          "name": "overall_limit",
+          "type": "numeric(20, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "configuration_snapshot": {
+          "name": "configuration_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "budget_calendar_months_month_format": {
+          "name": "budget_calendar_months_month_format",
+          "value": "\"budget_calendar_months\".\"month\" ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'"
+        },
+        "budget_calendar_months_limit_non_negative": {
+          "name": "budget_calendar_months_limit_non_negative",
+          "value": "\"budget_calendar_months\".\"overall_limit\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.budget_calendar_overrides": {
+      "name": "budget_calendar_overrides",
+      "schema": "",
+      "columns": {
+        "date": {
+          "name": "date",
+          "type": "date",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "planned_amount": {
+          "name": "planned_amount",
+          "type": "numeric(20, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "budget_calendar_overrides_amount_non_negative": {
+          "name": "budget_calendar_overrides_amount_non_negative",
+          "value": "\"budget_calendar_overrides\".\"planned_amount\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.budget_calendar_rules": {
+      "name": "budget_calendar_rules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "frequency": {
+          "name": "frequency",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "numeric(20, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "weekdays": {
+          "name": "weekdays",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "day_of_month": {
+          "name": "day_of_month",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active_from": {
+          "name": "active_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active_to": {
+          "name": "active_to",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "budget_calendar_rules_category_idx": {
+          "name": "budget_calendar_rules_category_idx",
+          "columns": [
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "budget_calendar_rules_category_id_budget_calendar_categories_id_fk": {
+          "name": "budget_calendar_rules_category_id_budget_calendar_categories_id_fk",
+          "tableFrom": "budget_calendar_rules",
+          "tableTo": "budget_calendar_categories",
+          "columnsFrom": [
+            "category_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "budget_calendar_rules_amount_non_negative": {
+          "name": "budget_calendar_rules_amount_non_negative",
+          "value": "\"budget_calendar_rules\".\"amount\" >= 0"
+        },
+        "budget_calendar_rules_frequency_valid": {
+          "name": "budget_calendar_rules_frequency_valid",
+          "value": "\"budget_calendar_rules\".\"frequency\" in ('daily', 'weekly', 'monthly', 'specific_days')"
+        },
+        "budget_calendar_rules_day_of_month_valid": {
+          "name": "budget_calendar_rules_day_of_month_valid",
+          "value": "\"budget_calendar_rules\".\"day_of_month\" is null or \"budget_calendar_rules\".\"day_of_month\" between 1 and 31"
+        },
+        "budget_calendar_rules_active_range_valid": {
+          "name": "budget_calendar_rules_active_range_valid",
+          "value": "\"budget_calendar_rules\".\"active_from\" is null or \"budget_calendar_rules\".\"active_to\" is null or \"budget_calendar_rules\".\"active_from\" <= \"budget_calendar_rules\".\"active_to\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.budget_calendar_settings": {
+      "name": "budget_calendar_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "week_start": {
+          "name": "week_start",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "weekly_food_target": {
+          "name": "weekly_food_target",
+          "type": "numeric(20, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "budget_calendar_settings_week_start_valid": {
+          "name": "budget_calendar_settings_week_start_valid",
+          "value": "\"budget_calendar_settings\".\"week_start\" between 1 and 7"
+        },
+        "budget_calendar_settings_food_target_non_negative": {
+          "name": "budget_calendar_settings_food_target_non_negative",
+          "value": "\"budget_calendar_settings\".\"weekly_food_target\" >= 0"
         }
       },
       "isRLSEnabled": false

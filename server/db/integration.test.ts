@@ -184,7 +184,8 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
     const migration0 = await readFile(resolve(process.cwd(), 'drizzle/0000_robust_anita_blake.sql'), 'utf8');
     const migration1 = await readFile(resolve(process.cwd(), 'drizzle/0001_budgeting_foundation.sql'), 'utf8');
     const migration2 = await readFile(resolve(process.cwd(), 'drizzle/0002_subscriptions.sql'), 'utf8');
-    const migration3 = await readFile(resolve(process.cwd(), 'drizzle/0003_loving_namor.sql'), 'utf8');
+    const migration3 = await readFile(resolve(process.cwd(), 'drizzle/0003_flaky_living_lightning.sql'), 'utf8');
+    const migration4 = await readFile(resolve(process.cwd(), 'drizzle/0004_purple_xorn.sql'), 'utf8');
     const isolatedMigration1 = migration1.replaceAll(
       '"public"."vaults"',
       `"${isolatedSchema}"."vaults"`,
@@ -204,6 +205,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         ...splitMigration(isolatedMigration1).map((statement) => transaction.query(statement)),
         ...splitMigration(migration2).map((statement) => transaction.query(statement)),
         ...splitMigration(migration3).map((statement) => transaction.query(statement)),
+        ...splitMigration(migration4).map((statement) => transaction.query(statement)),
       ]);
 
       const backfilled = await sqlClient.query(

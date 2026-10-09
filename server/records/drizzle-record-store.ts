@@ -6,6 +6,7 @@ import type {
   PersonRecord,
   SpendingCategory,
   TransactionRecord,
+  UpdateTransactionInput,
 } from '../../shared/contracts';
 import { categorizeTransaction } from '../../shared/budgeting';
 import type { AppDatabase } from '../db/client';
@@ -13,7 +14,7 @@ import { moneyBorrowed, moneyLent, transactions } from '../db/schema';
 import type { ListFilters, RecordStore } from './store';
 
 function transactionResult(row: typeof transactions.$inferSelect): TransactionRecord {
-  return { ...row, category: row.category as SpendingCategory, createdAt: row.createdAt.toISOString() };
+  return { ...row, category: row.category as SpendingCategory, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
 function personResult(row: typeof moneyLent.$inferSelect): PersonRecord {
@@ -24,10 +25,18 @@ export class DrizzleRecordStore implements RecordStore {
   constructor(private readonly database: AppDatabase) {}
 
   async createTransaction(input: CreateTransactionInput) {
-    const [row] = await this.database.insert(transactions).values({
+    const values = {
       ...input,
       category: input.category ?? categorizeTransaction(input.description),
-    }).returning();
+    };
+    const [row] = input.idempotencyKey
+      ? await this.database.insert(transactions).values(values).onConflictDoNothing({ target: transactions.idempotencyKey }).returning()
+      : await this.database.insert(transactions).values(values).returning();
+    if (!row && input.idempotencyKey) {
+      const [existing] = await this.database.select().from(transactions).where(eq(transactions.idempotencyKey, input.idempotencyKey)).limit(1);
+      if (existing) return transactionResult(existing);
+    }
+    if (!row) throw new Error('Transaction could not be created');
     return transactionResult(row);
   }
 
@@ -45,6 +54,15 @@ export class DrizzleRecordStore implements RecordStore {
 
   async getTransaction(id: string) {
     const [row] = await this.database.select().from(transactions).where(eq(transactions.id, id)).limit(1);
+    return row ? transactionResult(row) : undefined;
+  }
+
+  async updateTransaction(id: string, input: UpdateTransactionInput) {
+    const [row] = await this.database.update(transactions).set({
+      ...input,
+      category: input.category ?? categorizeTransaction(input.description),
+      updatedAt: new Date(),
+    }).where(eq(transactions.id, id)).returning();
     return row ? transactionResult(row) : undefined;
   }
 

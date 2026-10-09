@@ -1,5 +1,11 @@
 # Personal Money Manager
 
+## Budget workspace
+
+Authenticated users can open `/budget` to manage an editable monthly allocation, inspect a Monday-first local-date calendar, record multiple dated expenses, explicitly record ₹0 days, and compare persisted planned versus actual spending. Budget expenses are normal Ledgerly transactions, so existing history is preserved and no second spending ledger is created. Legacy transactions derive their budget date from `created_at` in `APP_TIMEZONE`.
+
+Migration `0003_flaky_living_lightning.sql` adds the optional transaction metadata and budget settings/override/day-record tables, and seeds the editable ₹10,000 allocation. Apply it through the existing `npm run db:migrate` deployment workflow. Do not run migrations against a production database from a local checkout.
+
 Ledgerly is a private, single-user, mobile-first budgeting workspace. It keeps spending, income, Vault savings, money lent, and money borrowed semantically separate while presenting them together in the Dashboard, History, and Analysis views.
 
 The React client never talks to Neon directly. Express owns authentication, validation, timestamps, database access, and every authoritative financial aggregate.
@@ -64,7 +70,7 @@ npm.cmd run db:migrate
 
 There is no SQLite, in-memory, or mock-data runtime fallback. Missing Neon configuration produces a clear startup error.
 
-Migration `0001_budgeting_foundation.sql` adds monthly budgets, income, spending categories, Vaults and contributions, assets, and liabilities. It backfills existing transactions to the `other` category before making the category required. Migration `0002_subscriptions.sql` additively creates persisted subscription reviews and does not alter financial records. Migration `0003_loving_namor.sql` adds only `budget_calendar_*` tables and seeds the editable ₹10,000 allocation. Apply all committed migrations before using their related screens.
+Migration `0001_budgeting_foundation.sql` adds monthly budgets, income, spending categories, Vaults and contributions, assets, and liabilities. It backfills existing transactions to the `other` category before making the category required. Migration `0002_subscriptions.sql` additively creates persisted subscription reviews and does not alter financial records. Migration `0003_flaky_living_lightning.sql` is the previously deployed transaction-backed budget workspace foundation. Migration `0004_purple_xorn.sql` adds only the isolated `budget_calendar_*` tables and seeds their editable ₹10,000 allocation. Apply all committed migrations before using their related screens.
 
 ## Run locally
 

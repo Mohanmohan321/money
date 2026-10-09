@@ -29,17 +29,27 @@ class MemoryRecordStore implements RecordStore {
   lastFilters: ListFilters = {};
 
   async createTransaction(input: CreateTransactionInput) {
+    const duplicate = [...this.transactions.values()].find((item) => item.idempotencyKey && item.idempotencyKey === input.idempotencyKey);
+    if (duplicate) return duplicate;
     const item = {
       id: `00000000-0000-4000-8000-${String(this.nextId++).padStart(12, '0')}`,
       ...input,
       category: input.category ?? categorizeTransaction(input.description),
       createdAt: '2026-09-02T10:00:00.000Z',
+      updatedAt: '2026-09-02T10:00:00.000Z',
     };
     this.transactions.set(item.id, item);
     return item;
   }
   async listTransactions(filters: ListFilters) { this.lastFilters = filters; return [...this.transactions.values()]; }
   async getTransaction(id: string) { return this.transactions.get(id); }
+  async updateTransaction(id: string, input: CreateTransactionInput) {
+    const existing = this.transactions.get(id);
+    if (!existing) return undefined;
+    const item = { ...existing, ...input, category: input.category ?? existing.category, updatedAt: '2026-09-02T12:00:00.000Z' };
+    this.transactions.set(id, item);
+    return item;
+  }
   async deleteTransaction(id: string) { return this.transactions.delete(id); }
 
   async createLent(input: CreatePersonRecordInput) {
@@ -123,6 +133,21 @@ describe('financial record APIs', () => {
       .send({ description: 'Swiggy gift card', amount: '20', category: 'shopping' })
       .expect(201);
     expect(overridden.body.data.category).toBe('shopping');
+  });
+
+  it('creates dated budget transactions idempotently and supports editing', async () => {
+    const input = {
+      description: 'Lunch', amount: '150', category: 'food', budgetCategory: 'lunch',
+      expenseDate: '2026-10-09', notes: 'Team meal',
+      idempotencyKey: '39bd18d1-1111-4111-8111-111111111111',
+    };
+    const first = await agent.post('/api/transactions').send(input).expect(201);
+    const retried = await agent.post('/api/transactions').send(input).expect(201);
+    expect(retried.body.data.id).toBe(first.body.data.id);
+    expect(first.body.data).toMatchObject({ expenseDate: '2026-10-09', budgetCategory: 'lunch', notes: 'Team meal' });
+
+    const edited = await agent.put(`/api/transactions/${first.body.data.id}`).send({ ...input, amount: '175', notes: 'Corrected' }).expect(200);
+    expect(edited.body.data).toMatchObject({ amount: '175.00', notes: 'Corrected', expenseDate: '2026-10-09' });
   });
 
   it.each([

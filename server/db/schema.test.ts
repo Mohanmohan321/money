@@ -10,6 +10,9 @@ import {
   budgetCalendarOverrides,
   budgetCalendarRules,
   budgetCalendarSettings,
+  budgetDateOverrides,
+  budgetDayRecords,
+  budgetSettings,
   income,
   liabilities,
   monthlyBudgets,
@@ -24,6 +27,14 @@ describe('budgeting schema', () => {
     expect(Object.keys(getTableColumns(monthlyBudgets))).toEqual(['month', 'salary', 'spendingLimit', 'savingsTarget', 'createdAt', 'updatedAt']);
     expect(Object.keys(getTableColumns(income))).toContain('category');
     expect(Object.keys(getTableColumns(transactions))).toContain('category');
+    expect(Object.keys(getTableColumns(transactions))).toEqual(expect.arrayContaining([
+      'expenseDate', 'budgetCategory', 'notes', 'idempotencyKey', 'updatedAt',
+    ]));
+    expect(Object.keys(getTableColumns(budgetSettings))).toEqual([
+      'id', 'overallMonthlyLimit', 'weeklyFoodTarget', 'weekStart', 'categories', 'createdAt', 'updatedAt',
+    ]);
+    expect(Object.keys(getTableColumns(budgetDateOverrides))).toContain('plannedAmount');
+    expect(Object.keys(getTableColumns(budgetDayRecords))).toContain('recordedZero');
     expect(Object.keys(getTableColumns(vaults))).toContain('targetAmount');
     expect(Object.keys(getTableColumns(vaultContributions))).toContain('vaultId');
     expect(Object.keys(getTableColumns(assets))).toContain('currentValue');
@@ -44,7 +55,7 @@ describe('budgeting schema', () => {
     ]));
   });
 
-  it('declares a separate prefixed budget calendar schema without changing transactions', () => {
+  it('declares a separate prefixed budget calendar schema without adding its fields to transactions', () => {
     expect([
       budgetCalendarSettings,
       budgetCalendarCategories,
@@ -63,7 +74,8 @@ describe('budgeting schema', () => {
       'budget_calendar_day_records',
     ]);
     expect(Object.keys(getTableColumns(transactions))).toEqual([
-      'id', 'description', 'category', 'amount', 'createdAt',
+      'id', 'description', 'category', 'amount', 'expenseDate', 'budgetCategory',
+      'notes', 'idempotencyKey', 'createdAt', 'updatedAt',
     ]);
   });
 

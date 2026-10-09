@@ -49,6 +49,7 @@ import type {
   UpdateBudgetCalendarSettingsInput,
   UpsertBudgetCalendarOverrideInput,
 } from '../shared/budget-calendar';
+import type { BudgetDateOverride, BudgetExpense, BudgetMonthWorkspace, BudgetSettings } from '../shared/budget-workspace';
 
 export class ApiError extends Error {
   constructor(
@@ -89,6 +90,14 @@ export const api = {
     }),
   logout: () =>
     apiRequest<{ authenticated: boolean }>('/api/auth/logout', { method: 'POST' }),
+  budgetWorkspace: (month: string, today: string) => apiRequest<BudgetMonthWorkspace>(`/api/budget/${month}?today=${today}`),
+  saveBudgetSettings: (input: BudgetSettings) => apiRequest<BudgetSettings>('/api/budget/settings', { method: 'PUT', body: JSON.stringify(input) }),
+  saveBudgetOverride: (date: string, input: Omit<BudgetDateOverride, 'date'>) => apiRequest<BudgetDateOverride>(`/api/budget/overrides/${date}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteBudgetOverride: (date: string) => apiRequest<{ deleted: boolean }>(`/api/budget/overrides/${date}`, { method: 'DELETE' }),
+  recordZeroBudgetDay: (date: string, recorded: boolean) => apiRequest<{ recorded: boolean }>(`/api/budget/days/${date}/record-zero`, { method: 'PUT', body: JSON.stringify({ recorded }) }),
+  createBudgetExpense: (input: { expenseDate: string; amount: string; budgetCategory: string; description: string; notes?: string; idempotencyKey: string }) => apiRequest<BudgetExpense>('/api/budget/expenses', { method: 'POST', body: JSON.stringify(input) }),
+  updateBudgetExpense: (id: string, input: { expenseDate: string; amount: string; budgetCategory: string; description: string; notes?: string }) => apiRequest<BudgetExpense>(`/api/budget/expenses/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteBudgetExpense: (id: string) => apiRequest<{ deleted: boolean }>(`/api/budget/expenses/${id}`, { method: 'DELETE' }),
   dashboard: () => apiRequest<DashboardData>('/api/dashboard'),
   history: (query: string) =>
     apiRequest<{ items: HistoryItem[]; total: number; limit: number; offset: number }>(

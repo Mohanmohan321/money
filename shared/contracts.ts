@@ -49,7 +49,12 @@ export const createTransactionSchema = z.object({
   description: descriptionSchema,
   amount: moneySchema,
   category: spendingCategorySchema.optional(),
+  expenseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must use YYYY-MM-DD').refine(isCalendarDate, 'Date must be a valid calendar date').optional(),
+  budgetCategory: z.string().trim().min(1).max(80).optional(),
+  notes: z.string().trim().max(500).optional(),
+  idempotencyKey: z.string().uuid().optional(),
 });
+export const updateTransactionSchema = createTransactionSchema.omit({ idempotencyKey: true });
 
 export const incomeCategorySchema = z.enum(['bonus', 'freelance', 'refund', 'other']);
 export const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Month must use YYYY-MM');
@@ -187,6 +192,7 @@ export const reviewSubscriptionSchema = z.object({ status: subscriptionReviewSta
 
 export type RecordType = z.infer<typeof recordTypeSchema>;
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
+export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
 export type CreatePersonRecordInput = z.infer<typeof createPersonRecordSchema>;
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
@@ -215,6 +221,11 @@ export interface TransactionRecord {
   category: SpendingCategory;
   amount: string;
   createdAt: string;
+  expenseDate?: string | null;
+  budgetCategory?: string | null;
+  notes?: string | null;
+  idempotencyKey?: string | null;
+  updatedAt?: string;
 }
 
 export interface MonthlyBudget {

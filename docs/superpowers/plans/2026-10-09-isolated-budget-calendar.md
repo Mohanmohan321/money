@@ -1,4 +1,6 @@
-# Isolated Budget Calendar Implementation Plan
+# Superseded: Isolated Budget Calendar Implementation Plan
+
+This plan is superseded by `2026-10-09-budget-workspace.md`. Do not execute it.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
