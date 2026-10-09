@@ -98,7 +98,7 @@ export function BudgetTrends({ summary, trends }: BudgetTrendsProps) {
             <div key={week.from}><div className="weekly-bars"><span className="planned" style={{ height: `${Math.max(2, Number(week.planned) / weeklyMax * 100)}%` }} /><span className="actual" style={{ height: `${Math.max(2, Number(week.actual) / weeklyMax * 100)}%` }} /></div><small>{compactDate(week.from)}</small></div>
           ))}
         </div>
-        <div className="table-scroll"><table aria-label="Weekly planned and actual spending data"><thead><tr><th>Week</th><th>Planned</th><th>Actual</th></tr></thead><tbody>{trends.weeks.map((week) => <tr key={week.from}><th>{shortDate(week.from)}–{shortDate(week.to)}</th><td>₹{formatMoney(week.planned)}</td><td>₹{formatMoney(week.actual)}</td></tr>)}</tbody></table></div>
+        <div className="table-scroll"><table aria-label="Weekly planned and actual spending data"><thead><tr><th>Week</th><th>Planned</th><th>Actual</th></tr></thead><tbody>{trends.weeks.map((week) => <tr key={week.from}><th>{shortDate(week.from)}–{shortDate(week.to)}{week.from.slice(0, 7) !== week.to.slice(0, 7) && <small> · month portion</small>}</th><td>₹{formatMoney(week.planned)}</td><td>₹{formatMoney(week.actual)}</td></tr>)}</tbody></table></div>
       </section>
 
       <section className="trend-chart-card" aria-labelledby="cumulative-trend-heading">

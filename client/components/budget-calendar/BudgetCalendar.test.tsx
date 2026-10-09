@@ -41,6 +41,7 @@ describe('BudgetCalendar', () => {
     const onSelectDate = vi.fn();
     render(<BudgetCalendar
       view={view}
+      week={{ from: '2026-10-05', to: '2026-10-11', planned: '1400.00', actual: '1250.00', remaining: '150.00', overBudgetDays: 1 }}
       selectedDate="2026-10-09"
       onMonthChange={vi.fn()}
       onSelectDate={onSelectDate}
@@ -48,6 +49,8 @@ describe('BudgetCalendar', () => {
 
     const grid = screen.getByRole('grid', { name: 'October 2026 Budget Calendar' });
     expect(within(grid).getAllByTestId('budget-calendar-blank')).toHaveLength(3);
+    expect(screen.getByLabelText('October 5–October 11 weekly budget')).toHaveTextContent('₹1,400.00');
+    expect(screen.getByLabelText('October 5–October 11 weekly budget')).toHaveTextContent('₹1,250.00');
     expect(within(grid).getByRole('button', {
       name: /October 9, 2026.*planned 200\.00.*actual not recorded/i,
     })).toHaveAttribute('aria-pressed', 'true');
@@ -65,6 +68,7 @@ describe('BudgetCalendar', () => {
     const onSelectDate = vi.fn();
     render(<BudgetCalendar
       view={view}
+      week={{ from: '2026-10-05', to: '2026-10-11', planned: '1400.00', actual: '1250.00', remaining: '150.00', overBudgetDays: 1 }}
       onMonthChange={onMonthChange}
       onSelectDate={onSelectDate}
     />);

@@ -77,5 +77,6 @@ describe('BudgetTrends', () => {
     expect(screen.getByRole('img', { name: 'Cumulative planned and actual spending' })).toBeVisible();
     expect(screen.getByRole('table', { name: 'Category spending data' })).toHaveTextContent('Food');
     expect(screen.getByRole('table', { name: 'Weekly planned and actual spending data' })).toHaveTextContent('September 28');
+    expect(screen.getByRole('table', { name: 'Weekly planned and actual spending data' })).toHaveTextContent('month portion');
   });
 });

@@ -1,11 +1,12 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-import type { BudgetCalendarDay, BudgetCalendarMonthView } from '../../../shared/budget-calendar';
+import type { BudgetCalendarDay, BudgetCalendarMonthView, BudgetCalendarReportSummary } from '../../../shared/budget-calendar';
 import { formatMoney, formatMonth } from '../../format';
 
 interface BudgetCalendarProps {
   view: BudgetCalendarMonthView;
   selectedDate?: string;
+  week: BudgetCalendarReportSummary['week'];
   onMonthChange(month: string): void;
   onSelectDate(date: string): void;
 }
@@ -33,6 +34,13 @@ function fullDate(date: string): string {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
+function monthDay(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Intl.DateTimeFormat('en', {
+    day: 'numeric', month: 'long', timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
 function statusText(day: BudgetCalendarDay): string {
   if (day.status === 'future') return 'Future';
   if (day.recordState === 'missing') return 'Not recorded';
@@ -50,6 +58,7 @@ function accessibleActual(day: BudgetCalendarDay): string {
 export function BudgetCalendar({
   view,
   selectedDate,
+  week,
   onMonthChange,
   onSelectDate,
 }: BudgetCalendarProps) {
@@ -63,6 +72,11 @@ export function BudgetCalendar({
           <strong>₹{formatMoney(view.summary.remaining.replace(/^-/, ''))}</strong>
         </div>
         <div><span>Used</span><strong>{view.summary.utilization ?? '—'}%</strong></div>
+      </section>
+      <section className="budget-calendar-week-summary" aria-label={`${monthDay(week.from)}–${monthDay(week.to)} weekly budget`}>
+        <div><span>Weekly plan</span><strong>₹{formatMoney(week.planned)}</strong></div>
+        <div><span>Weekly spent</span><strong>₹{formatMoney(week.actual)}</strong></div>
+        <div><span>{week.remaining.startsWith('-') ? 'Weekly over' : 'Weekly remaining'}</span><strong>₹{formatMoney(week.remaining.replace(/^-/, ''))}</strong></div>
       </section>
 
       <header className="budget-calendar-toolbar">

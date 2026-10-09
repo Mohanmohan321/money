@@ -32,7 +32,11 @@ export function BudgetCalendarPage() {
     trends?: BudgetCalendarTrends;
     error?: string;
   }>({ key: '' });
-  const [result, setResult] = useState<{ data?: BudgetCalendarMonthView; error?: string }>({});
+  const [result, setResult] = useState<{
+    data?: BudgetCalendarMonthView;
+    summary?: BudgetCalendarReportSummary;
+    error?: string;
+  }>({});
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const generation = useRef(0);
 
@@ -40,8 +44,11 @@ export function BudgetCalendarPage() {
     let active = true;
     const request = ++generation.current;
     setResult({});
-    void api.budgetCalendarView(month).then((data) => {
-      if (active && request === generation.current) setResult({ data });
+    void Promise.all([
+      api.budgetCalendarView(month),
+      api.budgetCalendarSummary(month),
+    ]).then(([data, summary]) => {
+      if (active && request === generation.current) setResult({ data, summary });
     }).catch((caught) => {
       if (active && request === generation.current) {
         setResult({
@@ -120,9 +127,10 @@ export function BudgetCalendarPage() {
       >
         {result.error && <div className="page-state compact-state error" role="alert">{result.error}</div>}
         {!result.data && !result.error && <div className="page-state compact-state">Loading Budget Calendar…</div>}
-        {result.data && selectedTab === 'Calendar' && (
+        {result.data && result.summary && selectedTab === 'Calendar' && (
           <BudgetCalendar
             view={result.data}
+            week={result.summary.week}
             selectedDate={selectedDate}
             onMonthChange={(nextMonth) => { setSelectedDate(undefined); setMonth(nextMonth); }}
             onSelectDate={setSelectedDate}

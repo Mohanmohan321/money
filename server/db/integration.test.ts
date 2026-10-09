@@ -12,6 +12,7 @@ import { DrizzleAggregateStore } from '../aggregates/drizzle-aggregate-store';
 import { DrizzleSessionStore } from '../auth/drizzle-session-store';
 import { hashSessionToken } from '../auth/session';
 import { DrizzleBudgetStore } from '../budgets/drizzle-budget-store';
+import { DrizzleBudgetCalendarStore } from '../budget-calendar/drizzle-budget-calendar-store';
 import { DrizzleNetWorthStore } from '../net-worth/drizzle-net-worth-store';
 import { DrizzlePlanningStore } from '../planning/drizzle-planning-store';
 import { DrizzleRecordStore } from '../records/drizzle-record-store';
@@ -21,6 +22,7 @@ import { monthRange, weekRangeContaining, yearRange } from '../lib/time';
 import { createDatabase, type AppDatabase } from './client';
 import {
   assets,
+  budgetCalendarExpenses,
   income,
   liabilities,
   monthlyBudgets,
@@ -46,6 +48,7 @@ interface IntegrationStores {
   aggregates: DrizzleAggregateStore;
   sessions: DrizzleSessionStore;
   subscriptions: DrizzleSubscriptionStore;
+  budgetCalendar: DrizzleBudgetCalendarStore;
 }
 
 let stores: IntegrationStores | undefined;
@@ -132,10 +135,47 @@ beforeAll(async () => {
     aggregates: new DrizzleAggregateStore(database),
     sessions: new DrizzleSessionStore(database),
     subscriptions: new DrizzleSubscriptionStore(database),
+    budgetCalendar: new DrizzleBudgetCalendarStore(database),
   };
 }, 120_000);
 
 describe.sequential('disposable Neon PostgreSQL integration', () => {
+  it('persists isolated Budget Calendar expenses without creating transactions', async () => {
+    const { database, budgetCalendar, records } = testStores();
+    const date = '2099-10-09';
+    const from = new Date('2099-10-09T00:00:00.000Z');
+    const toExclusive = new Date('2099-10-10T00:00:00.000Z');
+    const beforeTransactions = (await records.listTransactions({ from, toExclusive })).length;
+    const selectedCategory = (await budgetCalendar.listCategories()).find(({ active }) => active);
+    expect(selectedCategory).toBeTruthy();
+    const created = await budgetCalendar.createExpense({
+      expenseDate: date,
+      categoryId: selectedCategory!.id,
+      amount: '250.05',
+      description: `Integration calendar expense ${randomUUID()}`,
+      idempotencyKey: randomUUID(),
+    });
+    expect(created.outcome).toBe('created');
+    if (created.outcome === 'invalid_category') {
+      throw new Error('Seeded Budget Calendar category was rejected');
+    }
+    const expense = created.expense;
+    const cleanup = new CleanupRegistry();
+    cleanup.add(() => database.delete(budgetCalendarExpenses)
+      .where(eq(budgetCalendarExpenses.id, expense.id)));
+
+    try {
+      const day = await budgetCalendar.getDay(date, date);
+      expect(day).toEqual(expect.objectContaining({
+        actualAmount: '250.05', recordState: 'recorded_with_expenses',
+      }));
+      expect((await records.listTransactions({ from, toExclusive })).length)
+        .toBe(beforeTransactions);
+    } finally {
+      await cleanup.run();
+    }
+  });
+
   it('applies the production migrations to a legacy schema and verifies the category backfill', async () => {
     const databaseUrl = requireDisposableDatabaseUrl();
     const sqlClient = neon(databaseUrl);
@@ -144,6 +184,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
     const migration0 = await readFile(resolve(process.cwd(), 'drizzle/0000_robust_anita_blake.sql'), 'utf8');
     const migration1 = await readFile(resolve(process.cwd(), 'drizzle/0001_budgeting_foundation.sql'), 'utf8');
     const migration2 = await readFile(resolve(process.cwd(), 'drizzle/0002_subscriptions.sql'), 'utf8');
+    const migration3 = await readFile(resolve(process.cwd(), 'drizzle/0003_loving_namor.sql'), 'utf8');
     const isolatedMigration1 = migration1.replaceAll(
       '"public"."vaults"',
       `"${isolatedSchema}"."vaults"`,
@@ -162,6 +203,7 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         ),
         ...splitMigration(isolatedMigration1).map((statement) => transaction.query(statement)),
         ...splitMigration(migration2).map((statement) => transaction.query(statement)),
+        ...splitMigration(migration3).map((statement) => transaction.query(statement)),
       ]);
 
       const backfilled = await sqlClient.query(
@@ -176,6 +218,12 @@ describe.sequential('disposable Neon PostgreSQL integration', () => {
         [isolatedSchema],
       );
       expect(categoryColumn).toEqual([{ is_nullable: 'NO' }]);
+
+      const budgetCalendarSeed = await sqlClient.query(
+        `select count(*)::int as count, sum(monthly_amount)::text as total
+         from "${isolatedSchema}".budget_calendar_categories`,
+      );
+      expect(budgetCalendarSeed).toEqual([{ count: 12, total: '10000.00' }]);
 
       await expect(sqlClient.query(
         `insert into "${isolatedSchema}".income (source, category, amount)

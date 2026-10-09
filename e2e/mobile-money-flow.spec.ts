@@ -88,6 +88,57 @@ test('wrong password produces a clear error without entering the app', async ({ 
   await expect(page.getByRole('heading', { name: "Today's snapshot" })).toHaveCount(0);
 });
 
+test('Budget Calendar records and removes an isolated daily expense on mobile and desktop', async ({ page }, testInfo) => {
+  await unlock(page);
+  const description = `Calendar meal ${randomUUID().slice(0, 8)}`;
+  const writePaths: string[] = [];
+  let expenseId = '';
+  page.on('request', (request) => {
+    if (request.method() !== 'GET') writePaths.push(new URL(request.url()).pathname);
+  });
+
+  try {
+    const calendarResponse = page.waitForResponse((response) => (
+      response.url().includes('/api/budget-calendar/months/')
+      && response.url().endsWith('/calendar')
+      && response.request().method() === 'GET'
+    ));
+    await page.getByRole('link', { name: 'Budget Calendar' }).click();
+    const calendarPayload = await (await calendarResponse).json();
+    const today = calendarPayload.data.today as string;
+    const [year, month, day] = today.split('-').map(Number);
+    const dateLabel = new Intl.DateTimeFormat('en', {
+      day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+
+    await page.getByRole('button', { name: new RegExp(`^${dateLabel}, planned`) }).click();
+    const editor = page.getByRole('dialog', { name: dateLabel });
+    await expect(editor).toBeVisible();
+    await editor.getByLabel('Actual spending').fill('12.34');
+    await editor.getByLabel(/Description/).fill(description);
+    const createResponse = page.waitForResponse((response) => (
+      response.url().endsWith('/api/budget-calendar/expenses')
+      && response.request().method() === 'POST'
+    ));
+    await editor.getByRole('button', { name: 'Save expense' }).click();
+    const created = createdRecordSchema.parse(await (await createResponse).json());
+    expenseId = created.data.id;
+    await expect(editor.getByRole('status')).toHaveText('Expense saved');
+    await expect(editor.getByText(description)).toBeVisible();
+    expect(writePaths).toContain('/api/budget-calendar/expenses');
+    expect(writePaths).not.toContain('/api/transactions');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+    if (testInfo.project.name === 'mobile-chromium') {
+      const box = await editor.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    }
+  } finally {
+    if (expenseId) await page.request.delete(`/api/budget-calendar/expenses/${expenseId}`);
+  }
+});
+
 test('budgeting surfaces keep mobile order and expose desktop report equivalents', async ({ page }, testInfo) => {
   await unlock(page);
 

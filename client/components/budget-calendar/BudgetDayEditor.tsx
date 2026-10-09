@@ -134,7 +134,15 @@ export function BudgetDayEditor({
   }
 
   return (
-    <section className="budget-day-sheet" role="dialog" aria-modal="true" aria-labelledby="budget-day-title">
+    <section
+      className="budget-day-sheet"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="budget-day-title"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose();
+      }}
+    >
       <header className="budget-day-sheet-header">
         <div><p className="eyebrow">Daily budget</p><h2 id="budget-day-title">{dateLabel(day.date)}</h2></div>
         <button className="icon-button" type="button" aria-label="Close day editor" onClick={onClose}><X aria-hidden="true" /></button>

@@ -87,4 +87,14 @@ describe('BudgetDayEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Record ₹0 spent' }));
     expect(api.setBudgetCalendarDayRecord).toHaveBeenCalledWith(day.date, true);
   });
+
+  it('closes from the keyboard without saving', async () => {
+    const close = vi.fn();
+    const user = userEvent.setup();
+    render(<BudgetDayEditor day={day} categories={[category]} onClose={close} onMutationComplete={vi.fn()} />);
+
+    screen.getByLabelText('Actual spending').focus();
+    await user.keyboard('{Escape}');
+    expect(close).toHaveBeenCalledTimes(1);
+  });
 });
