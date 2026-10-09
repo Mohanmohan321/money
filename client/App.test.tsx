@@ -230,6 +230,19 @@ function installApi(
         },
       });
     }
+    if (path === '/api/budget-calendar/months/2026-09/calendar') {
+      return jsonResponse({
+        success: true,
+        data: {
+          month: '2026-09', today: '2026-09-01', days: [],
+          summary: {
+            monthlyBudget: '10000.00', actualSpending: '0.00', remaining: '10000.00',
+            utilization: '0.00', recordedDayAverage: '0.00', overBudgetDays: 0,
+            underBudgetDays: 0, onBudgetDays: 0, recordedDays: 0,
+          },
+        },
+      });
+    }
     return jsonResponse({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } }, 404);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -532,5 +545,19 @@ describe('mobile money manager', () => {
     await user.keyboard('{ArrowRight}');
     expect(annual).toHaveFocus();
     expect(await screen.findByRole('heading', { name: '2026 annual report' })).toBeVisible();
+  });
+
+  it('exposes Budget Calendar as a separate primary route', async () => {
+    const backend = installApi(true);
+    window.history.pushState({}, '', '/budget-calendar');
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Budget Calendar' })).toBeVisible();
+    expect((await screen.findAllByRole('link', { name: 'Budget Calendar' })).length).toBeGreaterThan(0);
+    expect(backend.calls).toContainEqual({
+      path: '/api/budget-calendar/months/2026-09/calendar', method: 'GET', body: undefined,
+    });
+    expect(backend.calls.some(({ path }) => path.startsWith('/api/history'))).toBe(false);
+    expect(backend.calls.some(({ path }) => path.startsWith('/api/analysis'))).toBe(false);
   });
 });

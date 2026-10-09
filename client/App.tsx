@@ -5,6 +5,7 @@ import { api } from './api';
 import { AppShell } from './components/AppShell';
 import { AddPage } from './pages/AddPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { BudgetCalendarPage } from './pages/BudgetCalendarPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { LoginPage } from './pages/LoginPage';
@@ -42,6 +43,7 @@ export function App() {
         <Route element={<AppShell onLogout={logout} />}>
           <Route index element={<DashboardPage />} />
           <Route path="add" element={<AddPage />} />
+          <Route path="budget-calendar" element={<BudgetCalendarPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
