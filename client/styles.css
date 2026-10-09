@@ -85,7 +85,7 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
 .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.7rem 0 1.5rem; }
 .date-stamp { flex: 0 0 auto; margin: 0; padding: 0.45rem 0.65rem; border: 1px solid var(--line); color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 0.66rem; text-transform: uppercase; }
 
-.bottom-nav { position: fixed; inset: auto 0 0; z-index: 20; display: grid; grid-template-columns: repeat(4, 1fr); padding: 0.55rem 0.35rem max(0.55rem, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(251, 252, 250, 0.96); backdrop-filter: blur(18px); }
+.bottom-nav { position: fixed; inset: auto 0 0; z-index: 20; display: grid; grid-template-columns: repeat(5, 1fr); padding: 0.55rem 0.35rem max(0.55rem, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(251, 252, 250, 0.96); backdrop-filter: blur(18px); }
 .bottom-nav a { min-height: 3.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; border-radius: 0.7rem; color: #6d7a73; font-size: 0.68rem; font-weight: 650; text-decoration: none; }
 .bottom-nav a svg { width: 1.2rem; }
 .bottom-nav a.active { color: var(--ink); background: #e3ebe6; }
@@ -535,3 +535,63 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
 .subscription-metrics dd { margin: 0; font-weight: 700; }
 .confidence-label, .confirmed-label { font-weight: 700; text-transform: capitalize; }
 @media (max-width: 540px) { .subscription-totals, .subscription-metrics { grid-template-columns: 1fr; } }
+
+/* Budget workspace */
+.budget-page { min-width: 0; }
+.budget-tabs { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 1rem; padding: .25rem; border: 1px solid var(--line); border-radius: .9rem; background: var(--paper); }
+.budget-tabs button { min-height: 2.8rem; border: 0; border-radius: .65rem; background: transparent; color: var(--muted); font-size: .72rem; font-weight: 750; text-transform: capitalize; }
+.budget-tabs button[aria-selected='true'] { background: var(--ink); color: white; }
+.budget-notice, .budget-warning, .budget-empty { padding: .75rem; border-radius: .7rem; background: #f3f6f4; color: var(--muted); font-size: .76rem; line-height: 1.45; }
+.budget-warning { border-left: .25rem solid var(--lent); background: var(--lent-soft); color: #6e4317; }
+.budget-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; margin-bottom: 1rem; }
+.budget-summary-grid article { min-width: 0; display: grid; gap: .35rem; padding: .85rem; border: 1px solid var(--line); border-radius: .9rem; background: var(--paper); }
+.budget-summary-grid span { color: var(--muted); font-size: .66rem; font-weight: 700; }
+.budget-summary-grid strong { overflow-wrap: anywhere; font-family: 'IBM Plex Mono', monospace; font-size: .9rem; }
+.budget-summary-grid progress { width: 100%; height: .4rem; accent-color: var(--transaction); }
+.budget-month-controls { display: grid; grid-template-columns: 2.7rem 1fr 2.7rem; align-items: center; gap: .6rem; margin: .5rem 0 1rem; text-align: center; }
+.budget-month-controls h2 { margin: 0; }
+.budget-month-controls .text-button { min-height: 2rem; padding: 0 .5rem; }
+.budget-workspace-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }
+.budget-weekday { padding: .55rem .1rem; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--muted); font-size: .55rem; font-weight: 800; text-align: center; }
+.budget-calendar-blank, .budget-calendar-cell { min-width: 0; min-height: 4.8rem; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #f1f4f2; }
+.budget-calendar-cell { background: var(--paper); }
+.budget-calendar-date { width: 100%; min-width: 0; min-height: 4.8rem; display: grid; align-content: start; gap: .18rem; padding: .28rem .2rem; overflow: hidden; border: 0; border-top: .22rem solid transparent; background: transparent; color: var(--ink); text-align: left; }
+.budget-calendar-date[aria-pressed='true'] { background: var(--transaction-soft); box-shadow: inset 0 0 0 2px var(--transaction); }
+.budget-calendar-date.status-under, .budget-calendar-date.status-on { border-top-color: var(--income); }
+.budget-calendar-date.status-over { border-top-color: var(--danger); }
+.budget-calendar-date.status-missing { border-top-color: #a8b1ac; }
+.budget-calendar-date.status-future { opacity: .56; }
+.budget-calendar-date strong { font-family: 'IBM Plex Mono', monospace; font-size: .66rem; }
+.budget-calendar-date span, .budget-calendar-date i { min-width: 0; overflow: hidden; color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: .48rem; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.budget-calendar-date i { color: var(--ink); }
+.budget-calendar-legend { display: flex; flex-wrap: wrap; gap: .55rem 1rem; margin: .75rem 0 1rem; color: var(--muted); font-size: .65rem; }
+.budget-calendar-legend span::before { content: ''; display: inline-block; width: .5rem; height: .5rem; margin-right: .3rem; border-radius: 50%; background: #a8b1ac; }
+.budget-calendar-legend .under::before { background: var(--income); }.budget-calendar-legend .over::before { background: var(--danger); }.budget-calendar-legend .future::before { background: var(--line); }
+.budget-week-summary { display: grid; gap: .55rem; }.budget-week-summary h2 { margin: .35rem 0; }
+.budget-week-summary article { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .7rem; padding: .75rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--paper); font-size: .68rem; }
+.budget-week-summary article strong { font-family: 'IBM Plex Mono', monospace; }.budget-week-summary article small { grid-column: 1/-1; color: var(--muted); }
+.budget-editor-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; align-items: end; background: rgba(21,33,27,.48); }
+.budget-day-editor { width: 100%; max-height: 92vh; padding: 1rem 1rem max(1rem, env(safe-area-inset-bottom)); overflow-y: auto; border-radius: 1.3rem 1.3rem 0 0; background: var(--paper); box-shadow: 0 -20px 50px rgba(21,33,27,.18); }
+.budget-day-editor > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }.budget-day-editor h2 { font-size: 1.15rem; }
+.budget-day-position { display: grid; gap: .28rem; margin: .8rem 0; padding: .8rem; border-radius: .75rem; background: #f0f4f1; font-size: .72rem; }.budget-day-position strong { font-family: 'IBM Plex Mono', monospace; }
+.budget-expense-form { display: grid; gap: .65rem; }.budget-expense-form label, .budget-config-summary label { display: grid; gap: .3rem; color: var(--muted); font-size: .7rem; font-weight: 700; }
+.budget-expense-form input, .budget-expense-form select, .budget-expense-form textarea, .budget-config-summary input, .budget-category-editor input, .budget-category-editor select { width: 100%; min-height: 2.85rem; padding: .65rem .7rem; border: 1px solid var(--line); border-radius: .65rem; background: white; color: var(--ink); }
+.budget-expense-form textarea { min-height: 4rem; resize: vertical; }.sticky-save { position: sticky; bottom: 0; z-index: 1; }
+.budget-expense-list { display: grid; gap: .45rem; margin: .9rem 0; }.budget-expense-list article { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; align-items: center; gap: .5rem; padding: .6rem 0; border-bottom: 1px solid var(--line); font-size: .68rem; }.budget-expense-list article div span { display: block; color: var(--muted); }.budget-expense-list article b { font-family: 'IBM Plex Mono', monospace; }.budget-expense-list article button { border: 0; background: transparent; font-size: .65rem; }
+.budget-trends { display: grid; gap: 1rem; }.budget-chart-card, .budget-configuration { min-width: 0; padding: 1rem; overflow: hidden; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }.budget-chart-card h2 { margin-bottom: .8rem; }
+.budget-day-bars { height: 8rem; display: grid; grid-template-columns: repeat(31, minmax(2px, 1fr)); align-items: end; gap: 1px; padding-top: .5rem; border-bottom: 1px solid var(--line); }.budget-day-bars span { height: 100%; display: flex; align-items: end; gap: 1px; }.budget-day-bars i, .budget-day-bars b { width: 50%; min-height: 0; background: var(--transaction); }.budget-day-bars b { background: var(--lent); }
+.budget-chart-card table { width: 100%; margin-top: .75rem; border-collapse: collapse; font-size: .62rem; }.budget-chart-card caption { padding: .5rem 0; color: var(--muted); text-align: left; }.budget-chart-card th, .budget-chart-card td { padding: .35rem .2rem; border-bottom: 1px solid var(--line); text-align: right; }.budget-chart-card th:first-child, .budget-chart-card td:first-child { text-align: left; }
+.budget-chart-card ul { display: grid; gap: .65rem; margin: 0; padding: 0; list-style: none; }.budget-chart-card li { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .3rem .7rem; font-size: .68rem; }.budget-chart-card li progress { grid-column: 1/-1; width: 100%; accent-color: var(--transaction); }.budget-chart-card li b { font-family: 'IBM Plex Mono', monospace; }
+.budget-config-summary { display: grid; gap: .7rem; }.budget-category-editor { display: grid; gap: .55rem; margin-top: 1rem; }.budget-category-editor > div { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(5rem,.7fr); gap: .45rem; padding: .7rem; border: 1px solid var(--line); border-radius: .75rem; }.budget-category-editor select { grid-column: 1/-1; }.budget-category-editor label { display: flex; align-items: center; gap: .35rem; font-size: .68rem; }.budget-category-editor label input { width: auto; min-height: 0; }.budget-config-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: .6rem; margin-top: 1rem; }
+.budget-weekdays { grid-column: 1/-1; display: flex; flex-wrap: wrap; gap: .45rem .7rem; margin: 0; padding: .6rem; border: 1px solid var(--line); border-radius: .6rem; }.budget-weekdays legend { color: var(--muted); font-size: .65rem; font-weight: 700; }
+
+@media (min-width: 720px) {
+  .budget-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .budget-config-summary { grid-template-columns: 1fr 1fr; }
+  .budget-calendar-blank, .budget-calendar-cell, .budget-calendar-date { min-height: 6rem; }
+  .budget-calendar-date { padding: .45rem; }.budget-calendar-date span, .budget-calendar-date i { font-size: .58rem; }
+}
+@media (min-width: 980px) {
+  .budget-editor-backdrop { justify-items: end; align-items: stretch; }.budget-day-editor { width: min(31rem, 42vw); max-height: 100vh; border-radius: 0; padding: 1.5rem; }
+  .budget-trends { grid-template-columns: repeat(2, minmax(0, 1fr)); }.budget-trends > .budget-empty { grid-column: 1/-1; }
+}

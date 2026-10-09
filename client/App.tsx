@@ -8,6 +8,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { LoginPage } from './pages/LoginPage';
+import { BudgetPage } from './pages/BudgetPage';
 
 type AuthState = 'checking' | 'authenticated' | 'anonymous';
 
@@ -42,6 +43,7 @@ export function App() {
         <Route element={<AppShell onLogout={logout} />}>
           <Route index element={<DashboardPage />} />
           <Route path="add" element={<AddPage />} />
+          <Route path="budget" element={<BudgetPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
