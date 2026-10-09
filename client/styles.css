@@ -85,11 +85,73 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
 .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin: 0.7rem 0 1.5rem; }
 .date-stamp { flex: 0 0 auto; margin: 0; padding: 0.45rem 0.65rem; border: 1px solid var(--line); color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 0.66rem; text-transform: uppercase; }
 
-.bottom-nav { position: fixed; inset: auto 0 0; z-index: 20; display: grid; grid-template-columns: repeat(4, 1fr); padding: 0.55rem 0.35rem max(0.55rem, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(251, 252, 250, 0.96); backdrop-filter: blur(18px); }
+.bottom-nav { position: fixed; inset: auto 0 0; z-index: 20; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 0.55rem 0.25rem max(0.55rem, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(251, 252, 250, 0.96); backdrop-filter: blur(18px); }
 .bottom-nav a { min-height: 3.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; border-radius: 0.7rem; color: #6d7a73; font-size: 0.68rem; font-weight: 650; text-decoration: none; }
 .bottom-nav a svg { width: 1.2rem; }
 .bottom-nav a.active { color: var(--ink); background: #e3ebe6; }
 .bottom-nav a:nth-child(2).active { background: var(--ink); color: white; }
+
+.budget-calendar-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 1rem; overflow: hidden; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }
+.budget-calendar-tabs button { min-width: 0; min-height: 3.2rem; padding: 0.55rem 0.25rem; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 0.72rem; font-weight: 750; }
+.budget-calendar-tabs button:last-child { border-right: 0; }
+.budget-calendar-tabs button[aria-selected='true'] { background: var(--ink); color: white; }
+.budget-calendar-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; margin-bottom: 1rem; }
+.budget-calendar-summary > div { min-width: 0; padding: 0.9rem; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }
+.budget-calendar-summary span { display: block; margin-bottom: 0.35rem; color: var(--muted); font-size: 0.7rem; }
+.budget-calendar-summary strong { font-family: 'IBM Plex Mono', monospace; font-size: 1rem; }
+.budget-calendar-summary .negative strong { color: var(--danger); }
+.budget-calendar-toolbar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.7rem; margin: 1rem 0; }
+.budget-calendar-toolbar > div:nth-child(2) { min-width: 0; text-align: center; }
+.budget-calendar-toolbar .eyebrow { margin-bottom: 0.15rem; }
+.budget-calendar-toolbar-actions { display: flex; align-items: center; gap: 0.35rem; }
+.secondary-button.compact { min-height: 2.65rem; padding: 0.55rem 0.7rem; }
+.budget-calendar-legend { display: flex; flex-wrap: wrap; gap: 0.45rem 0.8rem; margin-bottom: 0.65rem; color: var(--muted); font-size: 0.67rem; }
+.budget-calendar-legend span::before { content: ''; width: 0.55rem; height: 0.55rem; display: inline-block; margin-right: 0.3rem; border-radius: 50%; background: #aeb7b2; }
+.budget-calendar-legend .within::before { background: var(--income); }
+.budget-calendar-legend .over::before { background: var(--danger); }
+.budget-calendar-legend .future::before { border: 1px solid var(--line); background: transparent; }
+.budget-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--line); border-radius: 1rem; background: var(--line); gap: 1px; }
+.budget-calendar-weekday { min-width: 0; padding: 0.55rem 0.1rem; background: #e7ece9; color: var(--muted); font-size: 0.62rem; font-weight: 800; text-align: center; text-transform: uppercase; }
+.budget-calendar-blank, .budget-calendar-cell { min-width: 0; min-height: 5.2rem; background: var(--paper); }
+.budget-calendar-blank { opacity: 0.55; }
+.budget-calendar-day { width: 100%; min-height: 5.2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; padding: 0.45rem 0.35rem; border: 0; background: transparent; color: var(--ink); text-align: left; }
+.budget-calendar-day[aria-pressed='true'] { box-shadow: inset 0 0 0 2px var(--transaction); background: var(--transaction-soft); }
+.budget-day-number { font-weight: 800; }
+.budget-day-plan { max-width: 100%; overflow: hidden; font-family: 'IBM Plex Mono', monospace; font-size: 0.55rem; text-overflow: ellipsis; }
+.budget-day-status { margin-top: auto; color: var(--muted); font-size: 0.55rem; font-weight: 750; }
+.budget-calendar-day.status-over { background: #f9e6e6; color: var(--danger); }
+.budget-calendar-day.status-under, .budget-calendar-day.status-on { background: #e7f3eb; color: var(--income); }
+.budget-calendar-day.status-future { color: #8a958f; background: #f4f6f4; }
+.budget-day-sheet-backdrop { position: fixed; inset: 0; z-index: 40; display: flex; align-items: flex-end; background: rgba(21, 33, 27, 0.46); }
+.budget-day-sheet { width: 100%; max-height: 92vh; overflow-y: auto; padding: 1.1rem 1rem max(1.1rem, env(safe-area-inset-bottom)); border-radius: 1.4rem 1.4rem 0 0; background: var(--paper); box-shadow: 0 -20px 60px rgba(21,33,27,0.18); }
+.budget-day-sheet-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.budget-day-sheet-header h2 { max-width: 15ch; }
+.budget-day-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; margin: 1rem 0; }
+.budget-day-metrics > div { min-width: 0; padding: 0.7rem; border: 1px solid var(--line); border-radius: 0.8rem; }
+.budget-day-metrics dt { color: var(--muted); font-size: 0.62rem; }
+.budget-day-metrics dd { margin: 0.35rem 0 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.76rem; font-weight: 700; }
+.budget-day-metrics .negative { color: var(--danger); }
+.budget-live-calculation { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.8rem; padding: 0.7rem 0.8rem; border-radius: 0.8rem; background: var(--income-soft); color: var(--income); font-size: 0.72rem; }
+.budget-live-calculation.over { background: #f9e6e6; color: var(--danger); }
+.budget-expense-list { display: grid; gap: 0.45rem; margin-bottom: 1rem; }
+.budget-expense-list article { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 0.4rem; padding: 0.65rem; border: 1px solid var(--line); border-radius: 0.8rem; }
+.budget-expense-list article div { min-width: 0; }
+.budget-expense-list article span { display: block; overflow: hidden; color: var(--muted); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
+.budget-expense-list article b { font-family: 'IBM Plex Mono', monospace; font-size: 0.76rem; }
+.budget-expense-form { display: grid; gap: 0.45rem; }
+.budget-expense-form label { margin-top: 0.35rem; font-size: 0.75rem; font-weight: 750; }
+.budget-expense-form label span { color: var(--muted); font-weight: 500; }
+.budget-expense-form input, .budget-expense-form select, .budget-expense-form textarea { width: 100%; min-height: 3rem; padding: 0.7rem; border: 1px solid var(--line); border-radius: 0.7rem; background: white; color: var(--ink); }
+.budget-expense-form textarea { min-height: 5rem; resize: vertical; }
+.budget-expense-actions { position: sticky; bottom: -1.1rem; display: flex; justify-content: flex-end; gap: 0.6rem; margin: 0.6rem -1rem -1.1rem; padding: 0.8rem 1rem max(0.8rem, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--paper); }
+
+@media (min-width: 760px) {
+  .budget-calendar-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .budget-calendar-day, .budget-calendar-blank, .budget-calendar-cell { min-height: 7.2rem; }
+  .budget-day-plan, .budget-day-status { font-size: 0.68rem; }
+  .budget-day-sheet-backdrop { align-items: stretch; justify-content: flex-end; }
+  .budget-day-sheet { width: min(34rem, 46vw); max-height: 100vh; border-radius: 1.4rem 0 0 1.4rem; }
+}
 
 .icon-button { width: 2.65rem; height: 2.65rem; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--ink); }
 .icon-button svg { width: 1.1rem; }

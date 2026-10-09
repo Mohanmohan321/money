@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { BudgetCalendarMonthView } from '../../shared/budget-calendar';
+import type { BudgetCalendarCategory, BudgetCalendarMonthView } from '../../shared/budget-calendar';
 import { api, ApiError } from '../api';
-import { formatMoney, formatMonth } from '../format';
+import { BudgetCalendar } from '../components/budget-calendar/BudgetCalendar';
+import { BudgetDayEditor } from '../components/budget-calendar/BudgetDayEditor';
 
 const tabs = ['Calendar', 'Trends', 'Categories', 'Rules'] as const;
 type BudgetCalendarTab = typeof tabs[number];
@@ -14,7 +15,10 @@ function localMonth(): string {
 
 export function BudgetCalendarPage() {
   const [selectedTab, setSelectedTab] = useState<BudgetCalendarTab>('Calendar');
-  const [month] = useState(localMonth);
+  const [month, setMonth] = useState(localMonth);
+  const [selectedDate, setSelectedDate] = useState<string>();
+  const [categories, setCategories] = useState<BudgetCalendarCategory[]>([]);
+  const [revision, setRevision] = useState(0);
   const [result, setResult] = useState<{ data?: BudgetCalendarMonthView; error?: string }>({});
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const generation = useRef(0);
@@ -33,7 +37,18 @@ export function BudgetCalendarPage() {
       }
     });
     return () => { active = false; };
-  }, [month]);
+  }, [month, revision]);
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    let active = true;
+    void api.budgetCalendarCategories().then(({ items }) => {
+      if (active) setCategories(items);
+    }).catch(() => {
+      if (active) setCategories([]);
+    });
+    return () => { active = false; };
+  }, [selectedDate]);
 
   function selectByIndex(index: number) {
     const wrapped = (index + tabs.length) % tabs.length;
@@ -73,15 +88,29 @@ export function BudgetCalendarPage() {
         {result.error && <div className="page-state compact-state error" role="alert">{result.error}</div>}
         {!result.data && !result.error && <div className="page-state compact-state">Loading Budget Calendar…</div>}
         {result.data && selectedTab === 'Calendar' && (
-          <section className="budget-calendar-placeholder" aria-label={`${formatMonth(month)} Budget Calendar`}>
-            <p className="eyebrow">{formatMonth(month)}</p>
-            <strong>{formatMoney(result.data.summary.monthlyBudget)} monthly budget</strong>
-          </section>
+          <BudgetCalendar
+            view={result.data}
+            selectedDate={selectedDate}
+            onMonthChange={(nextMonth) => { setSelectedDate(undefined); setMonth(nextMonth); }}
+            onSelectDate={setSelectedDate}
+          />
         )}
         {result.data && selectedTab !== 'Calendar' && (
           <div className="compact-empty">{selectedTab} setup is ready.</div>
         )}
       </section>
+      {result.data && selectedDate && result.data.days.find((day) => day.date === selectedDate) && (
+        <div className="budget-day-sheet-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setSelectedDate(undefined);
+        }}>
+          <BudgetDayEditor
+            day={result.data.days.find((day) => day.date === selectedDate)!}
+            categories={categories}
+            onClose={() => setSelectedDate(undefined)}
+            onMutationComplete={() => setRevision((value) => value + 1)}
+          />
+        </div>
+      )}
     </div>
   );
 }
