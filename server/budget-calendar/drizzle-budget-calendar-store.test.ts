@@ -128,4 +128,53 @@ describe('DrizzleBudgetCalendarStore configuration', () => {
     expect(text).toContain('budget_calendar_day_records');
     expect(text).not.toMatch(/transactions|monthly_budgets/);
   });
+
+  it('aggregates calendar spending from isolated tables only', async () => {
+    const statements: SQL[] = [];
+    const execute = vi.fn(async (statement: SQL) => {
+      statements.push(statement);
+      const text = emitted(statement);
+      if (text.includes('from budget_calendar_months')) {
+        return { rows: [{
+          month: '2026-10', overallLimit: '10000.00',
+          configurationSnapshot: [{
+            categoryId: categoryRow.id, name: 'Lunch', group: 'meal',
+            monthlyAmount: '2400.00', includedInOverallBudget: true, sortOrder: 10,
+          }],
+          createdAt: now, updatedAt: now,
+        }] };
+      }
+      if (text.includes('from budget_calendar_rules')) {
+        return { rows: [{
+          id: '00000000-0000-4000-8000-000000000201', categoryId: categoryRow.id,
+          frequency: 'daily', amount: '200.00', weekdays: [], dayOfMonth: null,
+          activeFrom: null, activeTo: null, createdAt: now, updatedAt: now,
+        }] };
+      }
+      if (text.includes('from budget_calendar_expenses')) {
+        return { rows: [{
+          id: '00000000-0000-4000-8000-000000000301', expenseDate: '2026-10-09',
+          categoryId: categoryRow.id, categoryName: 'Lunch', amount: '250.00',
+          description: 'Lunch', notes: null,
+          idempotencyKey: '4aa2d68c-d9dd-44da-bb79-c987829e2f50',
+          createdAt: now, updatedAt: now,
+        }] };
+      }
+      return { rows: [] };
+    });
+    const store = new DrizzleBudgetCalendarStore({ execute } as unknown as AppDatabase);
+
+    const view = await store.getCalendar('2026-10', '2026-10-10');
+
+    expect(view.days).toHaveLength(31);
+    expect(view.days.find(({ date }) => date === '2026-10-09')).toEqual(expect.objectContaining({
+      plannedAmount: '200.00', actualAmount: '250.00', remaining: '-50.00', status: 'over',
+    }));
+    expect(view.summary).toEqual(expect.objectContaining({
+      monthlyBudget: '10000.00', actualSpending: '250.00', remaining: '9750.00',
+    }));
+    const sqlText = statements.map(emitted).join('\n');
+    expect(sqlText).toContain('budget_calendar_expenses');
+    expect(sqlText).not.toMatch(/from "?transactions"?|from "?monthly_budgets"?/);
+  });
 });

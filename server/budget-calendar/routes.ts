@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   budgetCalendarDateSchema,
   budgetCalendarMonthSchema,
+  budgetCalendarSummaryQuerySchema,
   createBudgetCalendarCategorySchema,
   createBudgetCalendarExpenseSchema,
   createBudgetCalendarRuleSchema,
@@ -80,6 +81,31 @@ export function createBudgetCalendarRouter(
     const month = budgetCalendarMonthSchema.parse(request.params.month);
     const input = updateBudgetCalendarMonthSchema.parse(request.body);
     response.json({ success: true, data: await store.updateMonth(month, input) });
+  });
+
+  router.get('/months/:month/calendar', async (request, response) => {
+    const month = budgetCalendarMonthSchema.parse(request.params.month);
+    const today = DateTime.now().setZone(timezone).toISODate();
+    if (!today) throw new AppError(500, 'INVALID_TIMEZONE', 'Application timezone is invalid');
+    response.json({ success: true, data: await store.getCalendar(month, today) });
+  });
+
+  router.get('/months/:month/summary', async (request, response) => {
+    const month = budgetCalendarMonthSchema.parse(request.params.month);
+    const query = budgetCalendarSummaryQuerySchema.parse(request.query);
+    const today = DateTime.now().setZone(timezone).toISODate();
+    if (!today) throw new AppError(500, 'INVALID_TIMEZONE', 'Application timezone is invalid');
+    response.json({
+      success: true,
+      data: await store.getSummary(month, query.week ?? `${month}-01`, today),
+    });
+  });
+
+  router.get('/months/:month/trends', async (request, response) => {
+    const month = budgetCalendarMonthSchema.parse(request.params.month);
+    const today = DateTime.now().setZone(timezone).toISODate();
+    if (!today) throw new AppError(500, 'INVALID_TIMEZONE', 'Application timezone is invalid');
+    response.json({ success: true, data: await store.getTrends(month, today) });
   });
 
   router.get('/rules', async (_request, response) => {

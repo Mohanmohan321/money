@@ -9,9 +9,12 @@ import type {
   BudgetCalendarGroup,
   BudgetCalendarMonthCategory,
   BudgetCalendarMonthConfiguration,
+  BudgetCalendarMonthView,
   BudgetCalendarOverride,
   BudgetCalendarRule,
+  BudgetCalendarReportSummary,
   BudgetCalendarSettings,
+  BudgetCalendarTrends,
   CreateBudgetCalendarCategoryInput,
   CreateBudgetCalendarExpenseInput,
   CreateBudgetCalendarRuleInput,
@@ -23,7 +26,11 @@ import type {
   UpsertBudgetCalendarOverrideInput,
 } from '../../shared/budget-calendar';
 import type { AppDatabase } from '../db/client';
-import { aggregateBudgetMonth, buildPlannedDays } from './calculations';
+import {
+  aggregateBudgetMonth,
+  buildPlannedDays,
+  calculatePlanningDiscrepancy,
+} from './calculations';
 import type { BudgetCalendarStore } from './store';
 
 type TimestampValue = Date | string;
@@ -171,6 +178,30 @@ function asExpense(row: ExpenseRow): BudgetCalendarExpense {
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
+}
+
+function shiftLocalDate(value: string, days: number): string {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return `${String(date.getUTCFullYear()).padStart(4, '0')}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function isoWeekday(value: string): number {
+  const [year, month, day] = value.split('-').map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return weekday === 0 ? 7 : weekday;
+}
+
+function weekBounds(anchor: string, weekStart: number): { from: string; to: string } {
+  const offset = (isoWeekday(anchor) - weekStart + 7) % 7;
+  const from = shiftLocalDate(anchor, -offset);
+  return { from, to: shiftLocalDate(from, 6) };
+}
+
+function nextMonthStart(month: string): string {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const next = new Date(Date.UTC(year, monthNumber, 1));
+  return `${String(next.getUTCFullYear()).padStart(4, '0')}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
 export class DrizzleBudgetCalendarStore implements BudgetCalendarStore {
@@ -549,5 +580,143 @@ export class DrizzleBudgetCalendarStore implements BudgetCalendarStore {
         THEN 'expenses_exist'::text ELSE 'updated'::text END AS outcome
     `);
     return rows<{ outcome: 'updated' | 'expenses_exist' }>(result)[0]?.outcome ?? 'updated';
+  }
+
+  async getCalendar(month: string, today: string): Promise<BudgetCalendarMonthView> {
+    const configuration = await this.getMonth(month);
+    const from = `${month}-01`;
+    const to = nextMonthStart(month);
+    const [rules, overrideResult, expenseResult, dayRecordResult] = await Promise.all([
+      this.listRules(),
+      this.database.execute(sql<OverrideRow>`
+        SELECT date, planned_amount AS "plannedAmount", note,
+          created_at AS "createdAt", updated_at AS "updatedAt"
+        FROM budget_calendar_overrides
+        WHERE date >= ${from}::date AND date < ${to}::date
+        ORDER BY date
+      `),
+      this.database.execute(sql<ExpenseRow>`
+        SELECT expense.id, expense.expense_date AS "expenseDate",
+          expense.category_id AS "categoryId", category.name AS "categoryName",
+          expense.amount, expense.description, expense.notes,
+          expense.idempotency_key AS "idempotencyKey",
+          expense.created_at AS "createdAt", expense.updated_at AS "updatedAt"
+        FROM budget_calendar_expenses expense
+        INNER JOIN budget_calendar_categories category ON category.id = expense.category_id
+        WHERE expense.expense_date >= ${from}::date AND expense.expense_date < ${to}::date
+        ORDER BY expense.expense_date, expense.created_at, expense.id
+      `),
+      this.database.execute(sql<{ date: string }>`
+        SELECT date FROM budget_calendar_day_records
+        WHERE date >= ${from}::date AND date < ${to}::date AND recorded_zero = true
+        ORDER BY date
+      `),
+    ]);
+    const plannedDays = buildPlannedDays({
+      month,
+      rules,
+      overrides: rows<OverrideRow>(overrideResult).map(asOverride),
+    });
+    const aggregate = aggregateBudgetMonth({
+      month,
+      today,
+      overallLimit: configuration.overallLimit,
+      plannedDays,
+      expenses: rows<ExpenseRow>(expenseResult).map(asExpense),
+      recordedZeroDates: new Set(rows<{ date: string }>(dayRecordResult).map((row) => row.date)),
+    });
+    return { month, today, ...aggregate };
+  }
+
+  async getSummary(
+    month: string,
+    weekAnchor: string,
+    today: string,
+  ): Promise<BudgetCalendarReportSummary> {
+    const [calendar, configuration, settings] = await Promise.all([
+      this.getCalendar(month, today),
+      this.getMonth(month),
+      this.getSettings(),
+    ]);
+    const bounds = weekBounds(weekAnchor, settings.weekStart);
+    const weekDays = calendar.days.filter((day) => day.date >= bounds.from && day.date <= bounds.to);
+    const planned = weekDays.reduce((total, day) => total.plus(day.plannedAmount), new Decimal(0));
+    const actual = weekDays.reduce((total, day) => total.plus(day.actualAmount), new Decimal(0));
+    const mealAllocation = configuration.categories
+      .filter((category) => category.group === 'meal' && category.includedInOverallBudget)
+      .reduce((total, category) => total.plus(category.monthlyAmount), new Decimal(0));
+    return {
+      ...calendar.summary,
+      month,
+      week: {
+        ...bounds,
+        planned: planned.toFixed(2),
+        actual: actual.toFixed(2),
+        remaining: planned.minus(actual).toFixed(2),
+        overBudgetDays: weekDays.filter((day) => day.status === 'over').length,
+      },
+      planningDiscrepancy: calculatePlanningDiscrepancy(
+        mealAllocation.toFixed(2),
+        settings.weeklyFoodTarget,
+      ),
+    };
+  }
+
+  async getTrends(month: string, today: string): Promise<BudgetCalendarTrends> {
+    const [calendar, settings] = await Promise.all([
+      this.getCalendar(month, today),
+      this.getSettings(),
+    ]);
+    let cumulativePlanned = new Decimal(0);
+    let cumulativeActual = new Decimal(0);
+    const daily = calendar.days.map((day) => {
+      cumulativePlanned = cumulativePlanned.plus(day.plannedAmount);
+      cumulativeActual = cumulativeActual.plus(day.actualAmount);
+      return {
+        date: day.date,
+        planned: day.plannedAmount,
+        actual: day.actualAmount,
+        recordState: day.recordState,
+        cumulativePlanned: cumulativePlanned.toFixed(2),
+        cumulativeActual: cumulativeActual.toFixed(2),
+      };
+    });
+
+    const categoryTotals = new Map<string, { name: string; amount: Decimal }>();
+    for (const expense of calendar.days.flatMap((day) => day.expenses)) {
+      const current = categoryTotals.get(expense.categoryId) ?? {
+        name: expense.categoryName,
+        amount: new Decimal(0),
+      };
+      current.amount = current.amount.plus(expense.amount);
+      categoryTotals.set(expense.categoryId, current);
+    }
+    const totalActual = Array.from(categoryTotals.values())
+      .reduce((total, category) => total.plus(category.amount), new Decimal(0));
+    const categories = Array.from(categoryTotals.entries()).map(([categoryId, item]) => ({
+      categoryId,
+      name: item.name,
+      amount: item.amount.toFixed(2),
+      percentage: totalActual.eq(0) ? '0.00' : item.amount.div(totalActual).times(100).toFixed(2),
+    })).sort((left, right) => Number(right.amount) - Number(left.amount) || left.name.localeCompare(right.name));
+
+    const weekly = new Map<string, { from: string; to: string; planned: Decimal; actual: Decimal }>();
+    for (const day of calendar.days) {
+      const bounds = weekBounds(day.date, settings.weekStart);
+      const current = weekly.get(bounds.from) ?? {
+        ...bounds, planned: new Decimal(0), actual: new Decimal(0),
+      };
+      current.planned = current.planned.plus(day.plannedAmount);
+      current.actual = current.actual.plus(day.actualAmount);
+      weekly.set(bounds.from, current);
+    }
+    const weeks = Array.from(weekly.values()).map((week) => ({
+      from: week.from,
+      to: week.to,
+      planned: week.planned.toFixed(2),
+      actual: week.actual.toFixed(2),
+    }));
+
+    return { month, today, daily, categories, weeks };
   }
 }

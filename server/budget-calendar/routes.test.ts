@@ -190,6 +190,39 @@ class MemoryBudgetCalendarStore implements BudgetCalendarStore {
     else this.recordedZeroDates.delete(date);
     return 'updated' as const;
   }
+  async getCalendar(month: string, today: string) {
+    const days = [];
+    for (let day = 1; day <= 31; day += 1) {
+      const date = `${month}-${String(day).padStart(2, '0')}`;
+      days.push(await this.getDay(date));
+    }
+    return {
+      month, today, days,
+      summary: {
+        monthlyBudget: '10000.00', actualSpending: '0.00', remaining: '10000.00',
+        utilization: '0.00', recordedDayAverage: '0.00', overBudgetDays: 0,
+        underBudgetDays: 0, onBudgetDays: 0, recordedDays: 0,
+      },
+    };
+  }
+  async getSummary(month: string, weekAnchor: string, today: string) {
+    const calendar = await this.getCalendar(month, today);
+    return {
+      ...calendar.summary,
+      month,
+      week: {
+        from: weekAnchor, to: '2026-10-11', planned: '1400.00', actual: '0.00',
+        remaining: '1400.00', overBudgetDays: 0,
+      },
+      planningDiscrepancy: {
+        mealAllocation: '5280.00', weeklyFoodTarget: '1900.00',
+        fourWeekTarget: '7600.00', difference: '2320.00', hasDiscrepancy: true,
+      },
+    };
+  }
+  async getTrends(month: string, today: string) {
+    return { month, today, daily: [], categories: [], weeks: [] };
+  }
 }
 
 const config: AppConfig = {
@@ -350,5 +383,28 @@ describe('budget calendar configuration API', () => {
     }).expect(400).expect(({ body }) => {
       expect(body.error.code).toBe('BUDGET_CALENDAR_CATEGORY_INVALID');
     });
+  });
+
+  it('serves calendar, weekly/monthly summary, and trend data from dedicated endpoints', async () => {
+    await agent.get('/api/budget-calendar/months/2026-10/calendar').expect(200).expect(({ body }) => {
+      expect(body.data).toEqual(expect.objectContaining({ month: '2026-10' }));
+      expect(body.data.days).toHaveLength(31);
+    });
+    await agent.get('/api/budget-calendar/months/2026-10/summary?week=2026-10-09')
+      .expect(200).expect(({ body }) => {
+        expect(body.data).toEqual(expect.objectContaining({
+          monthlyBudget: '10000.00',
+          week: expect.objectContaining({ from: '2026-10-09' }),
+          planningDiscrepancy: expect.objectContaining({ hasDiscrepancy: true }),
+        }));
+      });
+    await agent.get('/api/budget-calendar/months/2026-10/trends').expect(200).expect(({ body }) => {
+      expect(body.data).toEqual(expect.objectContaining({ month: '2026-10', daily: [] }));
+    });
+  });
+
+  it('rejects invalid report months and week anchors', async () => {
+    await agent.get('/api/budget-calendar/months/2026-14/calendar').expect(400);
+    await agent.get('/api/budget-calendar/months/2026-10/summary?week=2026-02-30').expect(400);
   });
 });

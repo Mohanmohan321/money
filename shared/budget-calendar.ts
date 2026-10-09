@@ -231,6 +231,7 @@ export interface BudgetCalendarMonthView {
 
 export interface BudgetCalendarTrends {
   month: string;
+  today: string;
   daily: Array<{
     date: string;
     planned: string;
@@ -242,3 +243,30 @@ export interface BudgetCalendarTrends {
   categories: Array<{ categoryId: string; name: string; amount: string; percentage: string }>;
   weeks: Array<{ from: string; to: string; planned: string; actual: string }>;
 }
+
+export interface BudgetCalendarWeekSummary {
+  from: string;
+  to: string;
+  planned: string;
+  actual: string;
+  remaining: string;
+  overBudgetDays: number;
+}
+
+export interface BudgetCalendarPlanningDiscrepancy {
+  mealAllocation: string;
+  weeklyFoodTarget: string;
+  fourWeekTarget: string;
+  difference: string;
+  hasDiscrepancy: boolean;
+}
+
+export interface BudgetCalendarReportSummary extends BudgetCalendarSummary {
+  month: string;
+  week: BudgetCalendarWeekSummary;
+  planningDiscrepancy: BudgetCalendarPlanningDiscrepancy;
+}
+
+export const budgetCalendarSummaryQuerySchema = z.object({
+  week: budgetCalendarDateSchema.optional(),
+});

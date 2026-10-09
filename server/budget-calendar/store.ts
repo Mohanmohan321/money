@@ -3,9 +3,12 @@ import type {
   BudgetCalendarDay,
   BudgetCalendarExpense,
   BudgetCalendarMonthConfiguration,
+  BudgetCalendarMonthView,
   BudgetCalendarOverride,
   BudgetCalendarRule,
+  BudgetCalendarReportSummary,
   BudgetCalendarSettings,
+  BudgetCalendarTrends,
   CreateBudgetCalendarCategoryInput,
   CreateBudgetCalendarExpenseInput,
   CreateBudgetCalendarRuleInput,
@@ -58,4 +61,11 @@ export interface BudgetCalendarStore {
     date: string,
     recordedZero: boolean,
   ): Promise<'updated' | 'expenses_exist'>;
+  getCalendar(month: string, today: string): Promise<BudgetCalendarMonthView>;
+  getSummary(
+    month: string,
+    weekAnchor: string,
+    today: string,
+  ): Promise<BudgetCalendarReportSummary>;
+  getTrends(month: string, today: string): Promise<BudgetCalendarTrends>;
 }
