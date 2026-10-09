@@ -1,8 +1,10 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   date,
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -11,6 +13,8 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+
+import type { BudgetCalendarMonthCategory } from '../../shared/budget-calendar';
 
 const createdAt = () =>
   timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow();
@@ -51,6 +55,138 @@ export const monthlyBudgets = pgTable(
     check('monthly_budgets_spending_limit_non_negative', sql`${table.spendingLimit} >= 0`),
     check('monthly_budgets_savings_target_non_negative', sql`${table.savingsTarget} >= 0`),
   ],
+);
+
+export const budgetCalendarSettings = pgTable(
+  'budget_calendar_settings',
+  {
+    id: uuid('id').primaryKey(),
+    weekStart: integer('week_start').notNull().default(1),
+    weeklyFoodTarget: money('weekly_food_target'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check('budget_calendar_settings_week_start_valid', sql`${table.weekStart} between 1 and 7`),
+    check('budget_calendar_settings_food_target_non_negative', sql`${table.weeklyFoodTarget} >= 0`),
+  ],
+);
+
+export const budgetCalendarCategories = pgTable(
+  'budget_calendar_categories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seedKey: varchar('seed_key', { length: 40 }).unique(),
+    name: varchar('name', { length: 80 }).notNull(),
+    group: varchar('group_name', { length: 24 }).notNull(),
+    monthlyAmount: money('monthly_amount'),
+    includedInOverallBudget: boolean('included_in_overall_budget').notNull().default(true),
+    active: boolean('active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check('budget_calendar_categories_amount_non_negative', sql`${table.monthlyAmount} >= 0`),
+    check('budget_calendar_categories_sort_order_non_negative', sql`${table.sortOrder} >= 0`),
+    check(
+      'budget_calendar_categories_group_valid',
+      sql`${table.group} in ('grocery', 'meal', 'petrol', 'snacks', 'miscellaneous', 'other')`,
+    ),
+    index('budget_calendar_categories_active_order_idx').on(table.active, table.sortOrder),
+  ],
+);
+
+export const budgetCalendarMonths = pgTable(
+  'budget_calendar_months',
+  {
+    month: varchar('month', { length: 7 }).primaryKey(),
+    overallLimit: money('overall_limit'),
+    configurationSnapshot: jsonb('configuration_snapshot')
+      .$type<BudgetCalendarMonthCategory[]>().notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check('budget_calendar_months_month_format', sql`${table.month} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
+    check('budget_calendar_months_limit_non_negative', sql`${table.overallLimit} >= 0`),
+  ],
+);
+
+export const budgetCalendarRules = pgTable(
+  'budget_calendar_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    categoryId: uuid('category_id').notNull().references(() => budgetCalendarCategories.id),
+    frequency: varchar('frequency', { length: 24 }).notNull(),
+    amount: money('amount'),
+    weekdays: jsonb('weekdays').$type<number[]>().notNull().default(sql`'[]'::jsonb`),
+    dayOfMonth: integer('day_of_month'),
+    activeFrom: date('active_from', { mode: 'string' }),
+    activeTo: date('active_to', { mode: 'string' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check('budget_calendar_rules_amount_non_negative', sql`${table.amount} >= 0`),
+    check(
+      'budget_calendar_rules_frequency_valid',
+      sql`${table.frequency} in ('daily', 'weekly', 'monthly', 'specific_days')`,
+    ),
+    check(
+      'budget_calendar_rules_day_of_month_valid',
+      sql`${table.dayOfMonth} is null or ${table.dayOfMonth} between 1 and 31`,
+    ),
+    check(
+      'budget_calendar_rules_active_range_valid',
+      sql`${table.activeFrom} is null or ${table.activeTo} is null or ${table.activeFrom} <= ${table.activeTo}`,
+    ),
+    index('budget_calendar_rules_category_idx').on(table.categoryId),
+  ],
+);
+
+export const budgetCalendarOverrides = pgTable(
+  'budget_calendar_overrides',
+  {
+    date: date('date', { mode: 'string' }).primaryKey(),
+    plannedAmount: money('planned_amount'),
+    note: varchar('note', { length: 500 }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check('budget_calendar_overrides_amount_non_negative', sql`${table.plannedAmount} >= 0`),
+  ],
+);
+
+export const budgetCalendarExpenses = pgTable(
+  'budget_calendar_expenses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    expenseDate: date('expense_date', { mode: 'string' }).notNull(),
+    categoryId: uuid('category_id').notNull().references(() => budgetCalendarCategories.id),
+    amount: money('amount'),
+    description: varchar('description', { length: 200 }),
+    notes: varchar('notes', { length: 500 }),
+    idempotencyKey: uuid('idempotency_key').notNull().unique(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check('budget_calendar_expenses_amount_positive', sql`${table.amount} > 0`),
+    index('budget_calendar_expenses_date_idx').on(table.expenseDate),
+    index('budget_calendar_expenses_category_idx').on(table.categoryId),
+  ],
+);
+
+export const budgetCalendarDayRecords = pgTable(
+  'budget_calendar_day_records',
+  {
+    date: date('date', { mode: 'string' }).primaryKey(),
+    recordedZero: boolean('recorded_zero').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
 );
 
 export const income = pgTable(

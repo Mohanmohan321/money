@@ -1,7 +1,23 @@
-import { getTableColumns } from 'drizzle-orm';
+import { getTableColumns, getTableName } from 'drizzle-orm';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { assets, income, liabilities, monthlyBudgets, subscriptionReviews, transactions, vaultContributions, vaults } from './schema';
+import {
+  assets,
+  budgetCalendarCategories,
+  budgetCalendarDayRecords,
+  budgetCalendarExpenses,
+  budgetCalendarMonths,
+  budgetCalendarOverrides,
+  budgetCalendarRules,
+  budgetCalendarSettings,
+  income,
+  liabilities,
+  monthlyBudgets,
+  subscriptionReviews,
+  transactions,
+  vaultContributions,
+  vaults,
+} from './schema';
 
 describe('budgeting schema', () => {
   it('exports every persistent budgeting column', () => {
@@ -26,5 +42,51 @@ describe('budgeting schema', () => {
     expect(getTableConfig(subscriptionReviews).checks.map((constraint) => constraint.name)).toEqual(expect.arrayContaining([
       'subscription_reviews_amount_positive', 'subscription_reviews_status_valid', 'subscription_reviews_cadence_valid',
     ]));
+  });
+
+  it('declares a separate prefixed budget calendar schema without changing transactions', () => {
+    expect([
+      budgetCalendarSettings,
+      budgetCalendarCategories,
+      budgetCalendarMonths,
+      budgetCalendarRules,
+      budgetCalendarOverrides,
+      budgetCalendarExpenses,
+      budgetCalendarDayRecords,
+    ].map(getTableName)).toEqual([
+      'budget_calendar_settings',
+      'budget_calendar_categories',
+      'budget_calendar_months',
+      'budget_calendar_rules',
+      'budget_calendar_overrides',
+      'budget_calendar_expenses',
+      'budget_calendar_day_records',
+    ]);
+    expect(Object.keys(getTableColumns(transactions))).toEqual([
+      'id', 'description', 'category', 'amount', 'createdAt',
+    ]);
+  });
+
+  it('constrains isolated money, date, status, and idempotency fields', () => {
+    expect(Object.keys(getTableColumns(budgetCalendarCategories))).toEqual([
+      'id', 'seedKey', 'name', 'group', 'monthlyAmount', 'includedInOverallBudget',
+      'active', 'sortOrder', 'createdAt', 'updatedAt',
+    ]);
+    expect(Object.keys(getTableColumns(budgetCalendarExpenses))).toEqual([
+      'id', 'expenseDate', 'categoryId', 'amount', 'description', 'notes',
+      'idempotencyKey', 'createdAt', 'updatedAt',
+    ]);
+    expect(getTableConfig(budgetCalendarExpenses).checks.map(({ name }) => name))
+      .toContain('budget_calendar_expenses_amount_positive');
+    expect(getTableConfig(budgetCalendarCategories).checks.map(({ name }) => name))
+      .toEqual(expect.arrayContaining([
+        'budget_calendar_categories_amount_non_negative',
+        'budget_calendar_categories_group_valid',
+      ]));
+    expect(getTableConfig(budgetCalendarRules).checks.map(({ name }) => name))
+      .toEqual(expect.arrayContaining([
+        'budget_calendar_rules_frequency_valid',
+        'budget_calendar_rules_amount_non_negative',
+      ]));
   });
 });
