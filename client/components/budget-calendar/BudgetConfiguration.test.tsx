@@ -89,6 +89,28 @@ describe('BudgetConfiguration', () => {
     expect(api.saveBudgetCalendarMonth).not.toHaveBeenCalled();
   });
 
+  it('adds a new category to the current month draft without mutating the saved snapshot', async () => {
+    const created: BudgetCalendarCategory = {
+      id: '00000000-0000-4000-8000-000000000099', name: 'Coffee', group: 'other',
+      monthlyAmount: '600.00', includedInOverallBudget: true, active: true, sortOrder: 130,
+      createdAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:00:00.000Z',
+    };
+    const create = vi.spyOn(api, 'createBudgetCalendarCategory').mockResolvedValue(created);
+    const user = userEvent.setup();
+    render(<BudgetConfiguration month="2026-10" section="categories" onMutationComplete={vi.fn()} />);
+
+    await screen.findByText('₹10,000.00 allocated');
+    await user.type(screen.getByLabelText('Category name'), 'Coffee');
+    await user.selectOptions(screen.getByLabelText('Group'), 'other');
+    await user.type(screen.getByLabelText('Monthly amount'), '600');
+    await user.click(screen.getByRole('button', { name: 'Add category' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(screen.getByLabelText('Monthly amount for Coffee')).toHaveValue('600.00');
+    expect(screen.getByText('₹10,600.00 allocated')).toBeVisible();
+    expect(api.saveBudgetCalendarMonth).not.toHaveBeenCalled();
+  });
+
   it('previews and saves a date override through the isolated endpoint', async () => {
     const save = vi.spyOn(api, 'saveBudgetCalendarOverride').mockResolvedValue({
       date: '2026-10-09', plannedAmount: '200.00', note: 'Special plan',

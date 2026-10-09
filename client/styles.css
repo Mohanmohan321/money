@@ -153,6 +153,44 @@ h2 { margin-bottom: 0; font-size: 1.35rem; letter-spacing: -0.035em; }
   .budget-day-sheet { width: min(34rem, 46vw); max-height: 100vh; border-radius: 1.4rem 0 0 1.4rem; }
 }
 
+.budget-trends { display: grid; gap: 1rem; }
+.trend-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+.trend-summary-grid article { min-width: 0; padding: 0.8rem; border: 1px solid var(--line); border-radius: 0.9rem; background: var(--paper); }
+.trend-summary-grid span { display: block; color: var(--muted); font-size: 0.67rem; }
+.trend-summary-grid strong { display: block; margin-top: 0.35rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.95rem; }
+.utilization-panel .section-heading strong { font-family: 'IBM Plex Mono', monospace; }
+.utilization-panel progress { width: 100%; height: 0.75rem; accent-color: var(--transaction); }
+.utilization-panel p { margin: 0.65rem 0 0; font-size: 0.76rem; font-weight: 750; }
+.utilization-panel p span { display: block; margin-top: 0.2rem; color: var(--muted); font-size: 0.68rem; font-weight: 500; }
+.trend-chart-card { min-width: 0; padding: 1rem; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }
+.paired-bar-chart { height: 10rem; display: flex; align-items: stretch; gap: 0.25rem; padding: 0.4rem 0.2rem 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.paired-bar-group { min-width: 1.25rem; flex: 1 0 1.25rem; display: grid; grid-template-rows: 1fr auto; gap: 0.25rem; }
+.paired-bars, .weekly-bars { display: flex; align-items: flex-end; justify-content: center; gap: 0.12rem; }
+.paired-bars span, .weekly-bars span { width: 0.35rem; min-height: 2px; border-radius: 0.2rem 0.2rem 0 0; }
+.paired-bars .planned, .weekly-bars .planned { background: #8aa299; }
+.paired-bars .actual, .weekly-bars .actual { background: var(--transaction); }
+.paired-bars .actual.missing { height: 3px !important; border: 1px dashed #87938d; background: transparent; }
+.paired-bar-group small, .weekly-bar-chart small { color: var(--muted); font-size: 0.55rem; text-align: center; }
+.trend-chart-card table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+.trend-chart-card th, .trend-chart-card td { padding: 0.55rem 0.35rem; border-bottom: 1px solid var(--line); text-align: left; }
+.trend-chart-card td { font-family: 'IBM Plex Mono', monospace; text-align: right; }
+.trend-chart-card thead th:not(:first-child) { text-align: right; }
+.category-donut { width: 9rem; height: 9rem; display: grid; place-items: center; margin: 0 auto 1rem; border-radius: 50%; position: relative; }
+.category-donut::after { content: ''; position: absolute; inset: 1.5rem; border-radius: 50%; background: var(--paper); }
+.category-donut span { z-index: 1; font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; font-weight: 800; }
+.weekly-bar-chart { min-height: 9rem; display: flex; align-items: stretch; gap: 0.7rem; padding: 0.5rem 0; }
+.weekly-bar-chart > div { min-width: 2.8rem; flex: 1; display: grid; grid-template-rows: 1fr auto; gap: 0.3rem; }
+.weekly-bars span { width: min(1rem, 35%); }
+.cumulative-chart { width: 100%; height: 11rem; overflow: visible; border-bottom: 1px solid var(--line); background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(25% - 1px), rgba(203,214,207,0.55) 25%); }
+.cumulative-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.cumulative-chart .planned { stroke: #8aa299; }
+.cumulative-chart .actual { stroke: var(--transaction); }
+@media (min-width: 760px) {
+  .trend-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .budget-trends { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .trend-summary-grid, .utilization-panel { grid-column: 1 / -1; }
+}
+
 .budget-configuration { display: grid; gap: 1rem; }
 .configuration-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; padding: 0.9rem; border: 1px solid var(--line); border-radius: 1rem; background: var(--paper); }
 .configuration-summary strong { width: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 1.15rem; }

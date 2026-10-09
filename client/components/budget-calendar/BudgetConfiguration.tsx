@@ -137,14 +137,22 @@ export function BudgetConfiguration({ month, section, onMutationComplete }: Budg
     event.preventDefault();
     setError('');
     try {
-      await api.createBudgetCalendarCategory({
+      const created = await api.createBudgetCalendarCategory({
         name: newName, group: newGroup, monthlyAmount: newAmount,
         includedInOverallBudget: true,
       });
+      setCategories((current) => [...current, created]);
+      setMonthCategories((current) => [...current, {
+        categoryId: created.id,
+        name: created.name,
+        group: created.group,
+        monthlyAmount: created.monthlyAmount,
+        includedInOverallBudget: created.includedInOverallBudget,
+        sortOrder: created.sortOrder,
+      }]);
       setNewName('');
       setNewAmount('');
-      setMessage('Category added. Apply it to this month when ready.');
-      await load();
+      setMessage('Category added to this month draft. Save the allocation to apply it.');
       onMutationComplete();
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Category could not be added');

@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { BudgetCalendarCategory, BudgetCalendarMonthView } from '../../shared/budget-calendar';
+import type {
+  BudgetCalendarCategory,
+  BudgetCalendarMonthView,
+  BudgetCalendarReportSummary,
+  BudgetCalendarTrends,
+} from '../../shared/budget-calendar';
 import { api, ApiError } from '../api';
 import { BudgetCalendar } from '../components/budget-calendar/BudgetCalendar';
 import { BudgetConfiguration } from '../components/budget-calendar/BudgetConfiguration';
 import { BudgetDayEditor } from '../components/budget-calendar/BudgetDayEditor';
+import { BudgetTrends as BudgetTrendsView } from '../components/budget-calendar/BudgetTrends';
 
 const tabs = ['Calendar', 'Trends', 'Categories', 'Rules'] as const;
 type BudgetCalendarTab = typeof tabs[number];
@@ -20,6 +26,12 @@ export function BudgetCalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string>();
   const [categories, setCategories] = useState<BudgetCalendarCategory[]>([]);
   const [revision, setRevision] = useState(0);
+  const [reports, setReports] = useState<{
+    key: string;
+    summary?: BudgetCalendarReportSummary;
+    trends?: BudgetCalendarTrends;
+    error?: string;
+  }>({ key: '' });
   const [result, setResult] = useState<{ data?: BudgetCalendarMonthView; error?: string }>({});
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const generation = useRef(0);
@@ -50,6 +62,25 @@ export function BudgetCalendarPage() {
     });
     return () => { active = false; };
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (selectedTab !== 'Trends') return;
+    let active = true;
+    const key = `${month}|${revision}`;
+    setReports({ key });
+    void Promise.all([
+      api.budgetCalendarSummary(month),
+      api.budgetCalendarTrends(month),
+    ]).then(([summary, trends]) => {
+      if (active) setReports({ key, summary, trends });
+    }).catch((caught) => {
+      if (active) setReports({
+        key,
+        error: caught instanceof ApiError ? caught.message : 'Budget trends could not be loaded',
+      });
+    });
+    return () => { active = false; };
+  }, [month, revision, selectedTab]);
 
   function selectByIndex(index: number) {
     const wrapped = (index + tabs.length) % tabs.length;
@@ -98,7 +129,10 @@ export function BudgetCalendarPage() {
           />
         )}
         {result.data && selectedTab === 'Trends' && (
-          <div className="compact-empty">{selectedTab} setup is ready.</div>
+          reports.error ? <div className="page-state compact-state error" role="alert">{reports.error}</div>
+            : reports.summary && reports.trends
+              ? <BudgetTrendsView summary={reports.summary} trends={reports.trends} />
+              : <div className="page-state compact-state">Loading budget trends…</div>
         )}
         {result.data && (selectedTab === 'Categories' || selectedTab === 'Rules') && (
           <BudgetConfiguration

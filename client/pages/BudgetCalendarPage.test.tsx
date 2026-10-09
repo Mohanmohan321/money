@@ -45,6 +45,20 @@ describe('BudgetCalendarPage', () => {
         createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
       });
       if (path.endsWith('/rules')) return response({ items: [] });
+      if (path.endsWith('/summary')) return response({
+        month: '2026-10', ...view.summary, projectedMonthEnd: '0.00',
+        week: {
+          from: '2026-10-05', to: '2026-10-11', planned: '0.00', actual: '0.00',
+          remaining: '0.00', overBudgetDays: 0,
+        },
+        planningDiscrepancy: {
+          mealAllocation: '5280.00', weeklyFoodTarget: '1900.00',
+          fourWeekTarget: '7600.00', difference: '2320.00', hasDiscrepancy: true,
+        },
+      });
+      if (path.endsWith('/trends')) return response({
+        month: '2026-10', today: '2026-10-09', daily: [], categories: [], weeks: [],
+      });
       if (path.endsWith('/months/2026-10')) return response({
         month: '2026-10', overallLimit: '10000.00', categories: [],
         createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
@@ -73,6 +87,8 @@ describe('BudgetCalendarPage', () => {
       '/api/budget-calendar/categories?includeArchived=true',
       '/api/budget-calendar/settings',
       '/api/budget-calendar/rules',
+      '/api/budget-calendar/months/2026-10/summary',
+      '/api/budget-calendar/months/2026-10/trends',
     ]));
     expect(paths.some((path) => /api\/(history|analysis|transactions)/.test(path))).toBe(false);
   });
