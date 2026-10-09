@@ -1,8 +1,10 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   date,
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -11,6 +13,8 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+
+import type { BudgetCategoryConfig } from '../../shared/budget-workspace';
 
 const createdAt = () =>
   timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow();
@@ -27,13 +31,56 @@ export const transactions = pgTable(
     description: text('description').notNull(),
     category: varchar('category', { length: 24 }).notNull(),
     amount: money('amount'),
+    expenseDate: date('expense_date', { mode: 'string' }),
+    budgetCategory: varchar('budget_category', { length: 80 }),
+    notes: varchar('notes', { length: 500 }),
+    idempotencyKey: uuid('idempotency_key').unique(),
     createdAt: createdAt(),
+    updatedAt: updatedAt(),
   },
   (table) => [
     check('transactions_amount_positive', sql`${table.amount} > 0`),
     index('transactions_created_at_idx').on(table.createdAt),
+    index('transactions_expense_date_idx').on(table.expenseDate),
   ],
 );
+
+export const budgetSettings = pgTable(
+  'budget_settings',
+  {
+    id: varchar('id', { length: 32 }).primaryKey(),
+    overallMonthlyLimit: money('overall_monthly_limit'),
+    weeklyFoodTarget: money('weekly_food_target'),
+    weekStart: integer('week_start').notNull().default(1),
+    categories: jsonb('categories').$type<BudgetCategoryConfig[]>().notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check('budget_settings_limit_non_negative', sql`${table.overallMonthlyLimit} >= 0`),
+    check('budget_settings_weekly_food_non_negative', sql`${table.weeklyFoodTarget} >= 0`),
+    check('budget_settings_week_start_monday', sql`${table.weekStart} = 1`),
+  ],
+);
+
+export const budgetDateOverrides = pgTable(
+  'budget_date_overrides',
+  {
+    date: date('date', { mode: 'string' }).primaryKey(),
+    plannedAmount: money('planned_amount'),
+    note: varchar('note', { length: 500 }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [check('budget_date_overrides_amount_non_negative', sql`${table.plannedAmount} >= 0`)],
+);
+
+export const budgetDayRecords = pgTable('budget_day_records', {
+  date: date('date', { mode: 'string' }).primaryKey(),
+  recordedZero: boolean('recorded_zero').notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
 
 export const monthlyBudgets = pgTable(
   'monthly_budgets',

@@ -1,13 +1,21 @@
 import { getTableColumns } from 'drizzle-orm';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { assets, income, liabilities, monthlyBudgets, subscriptionReviews, transactions, vaultContributions, vaults } from './schema';
+import { assets, budgetDateOverrides, budgetDayRecords, budgetSettings, income, liabilities, monthlyBudgets, subscriptionReviews, transactions, vaultContributions, vaults } from './schema';
 
 describe('budgeting schema', () => {
   it('exports every persistent budgeting column', () => {
     expect(Object.keys(getTableColumns(monthlyBudgets))).toEqual(['month', 'salary', 'spendingLimit', 'savingsTarget', 'createdAt', 'updatedAt']);
     expect(Object.keys(getTableColumns(income))).toContain('category');
     expect(Object.keys(getTableColumns(transactions))).toContain('category');
+    expect(Object.keys(getTableColumns(transactions))).toEqual(expect.arrayContaining([
+      'expenseDate', 'budgetCategory', 'notes', 'idempotencyKey', 'updatedAt',
+    ]));
+    expect(Object.keys(getTableColumns(budgetSettings))).toEqual([
+      'id', 'overallMonthlyLimit', 'weeklyFoodTarget', 'weekStart', 'categories', 'createdAt', 'updatedAt',
+    ]);
+    expect(Object.keys(getTableColumns(budgetDateOverrides))).toContain('plannedAmount');
+    expect(Object.keys(getTableColumns(budgetDayRecords))).toContain('recordedZero');
     expect(Object.keys(getTableColumns(vaults))).toContain('targetAmount');
     expect(Object.keys(getTableColumns(vaultContributions))).toContain('vaultId');
     expect(Object.keys(getTableColumns(assets))).toContain('currentValue');

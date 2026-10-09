@@ -1,9 +1,10 @@
-import { BarChart3, History, LayoutDashboard, LogOut, Plus, WalletCards } from 'lucide-react';
+import { BarChart3, CalendarRange, History, LayoutDashboard, LogOut, Plus, WalletCards } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 const navigation = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/add', label: 'Add', icon: Plus },
+  { to: '/budget', label: 'Budget', icon: CalendarRange },
   { to: '/history', label: 'History', icon: History },
   { to: '/analytics', label: 'Analysis', icon: BarChart3 },
 ];
